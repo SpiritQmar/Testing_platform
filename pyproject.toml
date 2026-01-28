@@ -1,0 +1,13 @@
+[project]
+name = "ai_analytics"
+version = "0.1.0"
+description = "AI система анализа качества вопросов и ответов студентов"
+authors = [{name = "Student Team", email = "team@university.edu"}]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "config*"]
