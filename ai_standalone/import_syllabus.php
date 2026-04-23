@@ -45,6 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['syllabus_file']) && 
             $keywords = extractKeywords($text, $disciplineName);
 
             $topics = parseSyllabusTopics($text, $disciplineName, $courseNumber);
+            $questions = parseSyllabusQuestions($text);
+            
+            foreach ($questions as $q) {
+            }
 
             $pdo->beginTransaction();
             
@@ -80,6 +84,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['syllabus_file']) && 
                     ]);
                     $savedTopics++;
                 } catch (Throwable $e) {}
+            }
+
+            $savedQuestions = 0;
+            if (!empty($questions) && !empty($topics)) {
+                $firstTopicCode = $topics[0]['code'];
+                
+                $stmtTopicId = $pdo->prepare("
+                    SELECT syllabus_topic_id FROM ai_syllabus_topics 
+                    WHERE discipline_name = :disc 
+                    AND course_number = :course 
+                    AND topic_code = :code
+                    LIMIT 1
+                ");
+                $stmtTopicId->execute([
+                    ':disc' => $disciplineName,
+                    ':course' => $courseNumber,
+                    ':code' => $firstTopicCode
+                ]);
+                $topicId = $stmtTopicId->fetchColumn();
+                
+                if ($topicId) {
+                    $stmtUpdateQuestion = $pdo->prepare("
+                        UPDATE hier_questions 
+                        SET question_text = :text, syllabus_topic_id = :topic_id
+                        WHERE question_id = :qid
+                    ");
+                    
+                    $stmtInsertQuestion = $pdo->prepare("
+                        INSERT INTO hier_questions (question_text, max_score, question_type)
+                        VALUES (:text, 100, 'single_choice')
+                    ");
+                    
+                    foreach ($questions as $question) {
+                        try {
+                            $questionId = $question['number'] ?? null;
+                            
+                            if ($questionId) {
+                                $stmtUpdateQuestion->execute([
+                                    ':text' => $question['text'],
+                                    ':topic_id' => $topicId,
+                                    ':qid' => $questionId
+                                ]);
+                                if ($stmtUpdateQuestion->rowCount() > 0) {
+                                    $savedQuestions++;
+                                } else {
+                                    $stmtInsertQuestion->execute([
+                                        ':text' => $question['text']
+                                    ]);
+                                    $savedQuestions++;
+                                }
+                            } else {
+                                $stmtInsertQuestion->execute([
+                                    ':text' => $question['text']
+                                ]);
+                                $savedQuestions++;
+                            }
+                        } catch (Throwable $e) {
+                            error_log("Error saving question: " . $e->getMessage());
+                        }
+                    }
+                }
             }
 
             $linkedQuestions = 0;
@@ -540,11 +605,11 @@ function extractDocxText(string $filePath): string
         throw new Exception('File does not contain document.xml');
     }
     
-    preg_match_all('/<w:t[^>]*>(.*?)<\/w:t>/s', $xmlContent, $matches);
-    $text = implode(' ', $matches[1]);
-    $text = html_entity_decode($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $xmlContent = strip_tags($xmlContent);
+    $xmlContent = html_entity_decode($xmlContent, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $xmlContent = preg_replace('/\s+/', ' ', $xmlContent);
     
-    return $text;
+    return trim($xmlContent);
 }
 
 function extractDocText(string $filePath): string
@@ -590,6 +655,42 @@ function extractOdtText(string $filePath): string
     $text = strip_tags($text);
     
     return trim($text);
+}
+
+function parseSyllabusQuestions(string $text): array
+{
+    $questions = [];
+    
+    $sectionText = $text;
+    
+    if (preg_match('/Контрольно-измерительные средства.*?(?=\n\s*$|\Z)/s', $text, $match)) {
+        $sectionText = $match[0];
+    }
+    elseif (preg_match('/Приложения.*?(?=\n\s*$|\Z)/s', $text, $match)) {
+        $sectionText = $match[0];
+    }
+    
+    
+    $pattern = '/(\d+)\.\s*(.*?)(?=\n\s*\d+\.\s*|\n\s*$|\Z)/s';
+    
+    if (preg_match_all($pattern, $sectionText, $matches, PREG_SET_ORDER)) {
+        foreach ($matches as $match) {
+            $questionText = trim($match[2]);
+            
+            $questionText = preg_replace('/\s+/', ' ', $questionText);
+            
+            if (mb_strlen($questionText) > 30) {
+                $questions[] = [
+                    'text' => $questionText,
+                    'type' => 'syllabus_question',
+                    'number' => (int)$match[1]
+                ];
+            }
+        }
+    } else {
+    }
+    
+    return $questions;
 }
 
 function extractKeywords(string $text, string $disciplineName): array

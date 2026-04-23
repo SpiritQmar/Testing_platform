@@ -1,17 +1,13 @@
 <?php
 
 session_start();
-$startTime = microtime(true);
 
-function logPerformance($message) {
-    $logFile = __DIR__ . '/performance.log';
-    $timestamp = date('Y-m-d H:i:s');
-    $elapsed = round(microtime(true) - $GLOBALS['startTime'], 3);
-    file_put_contents($logFile, "[{$timestamp}] [{$elapsed}s] {$message}\n", FILE_APPEND);
-}
-
-logPerformance('Page start');
-
+define('PER_PAGE', 50);
+define('DEFAULT_COURSE', 3);
+define('MAX_SCORE', 100);
+define('DEFAULT_DEDUP_THRESHOLD', 0.85);
+define('DEFAULT_TFIDF_WEIGHT', 0.6);
+define('MIN_STUDENTS_DISCRIMINATION', 2);
 
 $availableLanguages = ['kz' => 'Қазақша', 'ru' => 'Русский', 'en' => 'English'];
 $currentLang = $_SESSION['ai_lang'] ?? 'ru';
@@ -26,354 +22,16 @@ if (isset($_GET['lang'])) {
 }
 
 
-if (isset($_POST['set_language'])) {
-    $newLang = $_POST['language'] ?? 'ru';
-    if (isset($availableLanguages[$newLang])) {
-        $_SESSION['ai_lang'] = $newLang;
-        $currentLang = $newLang;
+$langFile = __DIR__ . '/lang/' . $currentLang . '.json';
+if (file_exists($langFile)) {
+    $jsonContent = file_get_contents($langFile);
+    $translations = json_decode($jsonContent, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        $translations = [];
     }
+} else {
+    $translations = [];
 }
-
-
-$translations = [
-    'kz' => [
-        'title' => 'AI Аналитика',
-        'import' => 'Импорт',
-        'validation' => 'Валидация',
-        'quality' => 'Сапа талдауы',
-        'correlation' => 'Корреляция',
-        'students' => 'Студенттер',
-        'settings' => 'Баптаулар',
-        'validation_desc' => 'Сұрақтарды оқу бағдарламасына сәйкестікке тексеру: орташа балл, әрекет саны, тақырыппен байланыс.',
-        'quality_desc' => 'Сұрақтар сапасының талдауы: орташа балл, сәтті жауаптар пайызы, қиындық, дискриминация.',
-        'correlation_desc' => 'Сұрақ бағасы мен пән бойынша жалпы балл арасындағы корреляция (Пирсон коэффициенті).',
-        'students_desc' => 'Студенттер жауаптарының үлгілерінің талдауы: орташа балл, минимум, пән бойынша жалпы, мәселелер түрі.',
-        'th_id' => 'ID',
-        'th_topic' => 'Тақырып',
-        'th_avg_score' => 'Орташа балл',
-        'th_attempts' => 'Әрекет саны',
-        'th_status' => 'Статус',
-        'th_issues' => 'Ескертулер',
-        'th_n' => 'N',
-        'th_avg' => 'Орташа',
-        'th_success_pct' => 'Сәттілік %',
-        'th_difficulty_pct' => 'Қиындық %',
-        'th_flag' => 'Жалау',
-        'th_discrimination' => 'Дискриминация',
-        'th_reason' => 'Себеп',
-        'th_coefficient' => 'Коэффициент r',
-        'th_min' => 'Минимум',
-        'th_total' => 'Жалпы',
-        'th_type' => 'Түрі',
-        'th_notes' => 'Ескертпелер',
-        'no_data' => 'Деректер жоқ',
-        'select_import' => 'Талдау үшін импортты таңдаңыз',
-        'overview' => 'Шолу',
-        'validation' => 'Валидация',
-        'quality' => 'Сапа талдауы',
-        'correlations' => 'Корреляциялар',
-        'students' => 'Студенттер',
-        'semantic' => 'Семантика',
-        'import' => 'Импорт',
-        'rules' => 'Ережелер',
-        'settings' => 'Баптаулар',
-        'containers' => 'Контейнерлер',
-        'subtitle' => 'Емтихан сұрақтары сапасын талдауға арналған модульді жүйе',
-        'select_data_import' => 'Деректер импортын таңдаңыз:',
-        'apply' => 'Қолдану',
-        'questions' => 'Сұрақтар',
-        'students' => 'Студенттер',
-        'attempts' => 'Әрекет саны',
-        'avg_score' => 'Орташа балл',
-        'available_services' => 'Қол жетімді қызметтер',
-        'quick_access' => 'Жылдам қол жетімділік',
-        'question_quality_analysis' => 'Сұрақтар сапасын талдау',
-        'syllabus_validation' => 'Силлабус валидациясы',
-        'student_patterns' => 'Студенттер үлгілері',
-        'container_management' => 'Контейнерлер басқарушысы',
-        'syllabus_import' => 'Силлабус импорты',
-        'ods_exam_results' => 'ODS емтихан нәтижелері',
-        'link_syllabus_questions' => 'Сұрақтарды силлабусқа байлау',
-        'duplicate_detection' => 'Көшірмелерді анықтау',
-        'discipline' => 'Пән',
-        'course' => 'Курс',
-        'syllabus_file' => 'Силлабус файлы',
-        'formats' => 'Форматтар: DOCX, DOC, PDF, TXT, ODT',
-        'upload_process' => 'Жүктеу және өңдеу',
-        'ods_file' => 'ODS нәтиже файлы',
-        'exam_export_file' => 'Емтихан экспорт файлы (.ods)',
-        'convert_import' => 'Түрлендіру және импорттау',
-        'converter_description' => 'Түрлендіргіш не істейді:',
-        'converter_1' => 'Орыс/швед баған атауларын ағылшынға түрлендіреді',
-        'converter_2' => 'CSV бөлгішімен құрады ;',
-        'converter_3' => 'Деректерді дерекқорға автоматты түрде импорттайды',
-        'converter_4' => 'Жаңа пәндер үшін силлабус тақырыптарын құрады',
-        'converter_5' => 'Сұрақтарды силлабус тақырыптарына байлайды',
-        'discipline_name' => 'Пән атауы',
-        'course_number' => 'Курс нөмірі',
-        'link_questions_syllabus' => 'Сұрақтарды силлабусқа байлау',
-        'similarity_threshold' => 'Ұқсастық шегі',
-        'similarity_desc' => 'Бұл шектен жоғары ұқсастығы бар сұрақтар көшірме деп белгіленеді',
-        'detection_method' => 'Анықтау әдісі',
-        'embeddings' => 'Embeddings (дәлірек)',
-        'tfidf' => 'TF-IDF (жылдамырақ)',
-        'hybrid' => 'Гибридті (екеуі де)',
-        'detect_duplicates' => 'Көшірмелерді анықтау',
-        'duplicate_results' => 'Көшірме анықтау нәтижелері',
-        'run_detection' => 'Нәтижелерді көру үшін анықтауды іске қосыңыз',
-        'import_statistics' => 'Импорт статистикасы',
-        'syllabuses' => 'Силлабустар',
-        'disciplines' => 'Пәндер',
-        'data_imports' => 'Деректер импорттары',
-        'recent_syllabuses' => 'Соңғы силлабустар',
-        'no_syllabuses' => 'Силлабустар әлі жүктелмеген',
-        'q1' => 'С1',
-        'q2' => 'С2',
-        'similarity' => 'Ұқсастық',
-        'method' => 'Әдіс',
-        'select_questions' => 'Сұрақтарды таңдаңыз',
-        'select_syllabus_topic' => 'Силлабус тақырыбын таңдаңыз',
-        'link_selected' => 'Таңдалғандарды байлау',
-        'unlinked_questions' => 'Байланбаған сұрақтар',
-        'no_unlinked_questions' => 'Байланбаған сұрақтар жоқ',
-        'clear_data' => 'Деректерді тазалау',
-        'clear_data_confirm' => 'Таңдалған деректерді тазалау керек пе? Бұл әрекетті болдырмау мүмкін емес.',
-        'clear_data_success' => 'Деректер сәтті тазаланды',
-        'clear_selected' => 'Таңдалғандарды тазалау',
-        'cleared_items' => 'Тазаланды',
-        'select_items_to_clear' => 'Тазалау үшін элементтерді таңдаңыз',
-        'exam_results' => 'Емтихан нәтижелері',
-        'syllabuses' => 'Силлабустар',
-        'questions' => 'Сұрақтар',
-        'students' => 'Студенттер',
-        'uploaded_files' => 'Жүктелген файлдар',
-    ],
-    'ru' => [
-        'title' => 'AI Аналитика',
-        'import' => 'Импорт',
-        'validation' => 'Валидация',
-        'quality' => 'Quality Analysis',
-        'correlation' => 'Correlation Analysis',
-        'students' => 'Student Patterns',
-        'settings' => 'Настройки',
-        'validation_desc' => 'Проверка вопросов на соответствие силлабусу: средний балл, количество попыток, наличие привязки к теме программы.',
-        'quality_desc' => 'Анализ качества вопросов: средний балл, процент успешных ответов, сложность, дискриминативность.',
-        'correlation_desc' => 'Корреляция между оценкой за вопрос и итоговым баллом по дисциплине (коэффициент Пирсона).',
-        'students_desc' => 'Анализ паттернов ответов студентов: средний балл, минимум, итог по дисциплине, тип проблем.',
-        'th_id' => 'ID',
-        'th_topic' => 'Тема',
-        'th_avg_score' => 'Средний балл',
-        'th_attempts' => 'Попыток',
-        'th_status' => 'Статус',
-        'th_issues' => 'Замечания',
-        'th_n' => 'N',
-        'th_avg' => 'Средний',
-        'th_success_pct' => '% успеха',
-        'th_difficulty_pct' => 'Сложность %',
-        'th_flag' => 'Флаг',
-        'th_discrimination' => 'Дискриминативность',
-        'th_reason' => 'Причина',
-        'th_coefficient' => 'Коэффициент r',
-        'th_min' => 'Мин',
-        'th_total' => 'Итог',
-        'th_type' => 'Тип',
-        'th_notes' => 'Заметки',
-        'no_data' => 'Нет данных',
-        'select_import' => 'Выберите импорт для анализа',
-        'overview' => 'Обзор',
-        'validation' => 'Валидация',
-        'quality' => 'Quality Analysis',
-        'correlations' => 'Корреляции',
-        'students' => 'Студенты',
-        'semantic' => 'Семантика',
-        'import' => 'Импорт',
-        'rules' => 'Правила',
-        'settings' => 'Настройки',
-        'containers' => 'Контейнеры',
-        'subtitle' => 'Модульная система для анализа качества экзаменационных вопросов',
-        'select_data_import' => 'Выберите импорт данных:',
-        'apply' => 'Применить',
-        'questions' => 'Вопросы',
-        'students' => 'Студенты',
-        'attempts' => 'Попытки',
-        'avg_score' => 'Средний балл',
-        'available_services' => 'Доступные сервисы',
-        'quick_access' => 'Быстрый доступ',
-        'question_quality_analysis' => 'Анализ качества вопросов',
-        'syllabus_validation' => 'Валидация силлабуса',
-        'student_patterns' => 'Паттерны студентов',
-        'container_management' => 'Управление контейнерами',
-        'syllabus_import' => 'Импорт силлабуса',
-        'ods_exam_results' => 'Результаты экзамена ODS',
-        'link_syllabus_questions' => 'Привязка силлабуса к вопросам',
-        'duplicate_detection' => 'Обнаружение дубликатов',
-        'discipline' => 'Дисциплина',
-        'course' => 'Курс',
-        'syllabus_file' => 'Файл силлабуса',
-        'formats' => 'Форматы: DOCX, DOC, PDF, TXT, ODT',
-        'upload_process' => 'Загрузить и обработать',
-        'ods_file' => 'Файл результатов ODS',
-        'exam_export_file' => 'Файл экспорта экзамена (.ods)',
-        'convert_import' => 'Конвертировать и импортировать',
-        'converter_description' => 'Что делает конвертер:',
-        'converter_1' => 'Преобразует русские/шведские названия колонок в английские',
-        'converter_2' => 'Создает CSV с разделителем ;',
-        'converter_3' => 'Автоматически импортирует данные в базу данных',
-        'converter_4' => 'Создает темы силлабуса для новых дисциплин',
-        'converter_5' => 'Привязывает вопросы к темам силлабуса',
-        'discipline_name' => 'Название дисциплины',
-        'course_number' => 'Номер курса',
-        'link_questions_syllabus' => 'Привязать вопросы к силлабусу',
-        'similarity_threshold' => 'Порог сходства',
-        'similarity_desc' => 'Вопросы со сходством выше этого порога будут помечены как дубликаты',
-        'detection_method' => 'Метод обнаружения',
-        'embeddings' => 'Embeddings (точнее)',
-        'tfidf' => 'TF-IDF (быстрее)',
-        'hybrid' => 'Гибридный (оба)',
-        'detect_duplicates' => 'Обнаружить дубликаты',
-        'duplicate_results' => 'Результаты обнаружения дубликатов',
-        'run_detection' => 'Запустите обнаружение для просмотра результатов',
-        'import_statistics' => 'Статистика импорта',
-        'syllabuses' => 'Силлабусы',
-        'disciplines' => 'Дисциплины',
-        'data_imports' => 'Импорты данных',
-        'recent_syllabuses' => 'Последние силлабусы',
-        'no_syllabuses' => 'Силлабусы еще не загружены',
-        'q1' => 'В1',
-        'q2' => 'В2',
-        'similarity' => 'Сходство',
-        'method' => 'Метод',
-        'select_questions' => 'Выберите вопросы',
-        'select_syllabus_topic' => 'Выберите тему силлабуса',
-        'link_selected' => 'Привязать выбранные',
-        'unlinked_questions' => 'Непривязанные вопросы',
-        'no_unlinked_questions' => 'Нет непривязанных вопросов',
-        'clear_data_confirm' => 'Вы уверены, что хотите очистить выбранные данные? Это действие нельзя отменить.',
-        'clear_data_success' => 'Данные успешно очищены',
-        'clear_selected' => 'Очистить выбранное',
-        'cleared_items' => 'Очищено',
-        'select_items_to_clear' => 'Выберите элементы для очистки',
-        'exam_results' => 'Результаты экзаменов',
-        'syllabuses' => 'Силлабусы',
-        'questions' => 'Вопросы',
-        'students' => 'Студенты',
-        'uploaded_files' => 'Загруженные файлы',
-    ],
-    'en' => [
-        'title' => 'AI Analytics',
-        'import' => 'Import',
-        'validation' => 'Validation',
-        'quality' => 'Quality Analysis',
-        'correlation' => 'Correlation Analysis',
-        'students' => 'Student Patterns',
-        'settings' => 'Settings',
-        'validation_desc' => 'Check questions against syllabus: average score, attempts, topic linkage.',
-        'quality_desc' => 'Question quality analysis: average score, success rate, difficulty, discrimination.',
-        'correlation_desc' => 'Correlation between question score and total discipline score (Pearson coefficient).',
-        'students_desc' => 'Student response pattern analysis: average score, minimum, total by discipline, issue types.',
-        'th_id' => 'ID',
-        'th_topic' => 'Topic',
-        'th_avg_score' => 'Avg Score',
-        'th_attempts' => 'Attempts',
-        'th_status' => 'Status',
-        'th_issues' => 'Issues',
-        'th_n' => 'N',
-        'th_avg' => 'Avg',
-        'th_success_pct' => 'Success %',
-        'th_difficulty_pct' => 'Difficulty %',
-        'th_flag' => 'Flag',
-        'th_discrimination' => 'Discrimination',
-        'th_reason' => 'Reason',
-        'th_coefficient' => 'Coefficient r',
-        'th_min' => 'Min',
-        'th_total' => 'Total',
-        'th_type' => 'Type',
-        'th_notes' => 'Notes',
-        'no_data' => 'No data',
-        'select_import' => 'Select import for analysis',
-        'overview' => 'Overview',
-        'validation' => 'Validation',
-        'quality' => 'Quality',
-        'correlations' => 'Correlations',
-        'students' => 'Students',
-        'semantic' => 'Semantic',
-        'import' => 'Import',
-        'rules' => 'Rules',
-        'settings' => 'Settings',
-        'containers' => 'Containers',
-        'subtitle' => 'Modular system for exam question quality analysis',
-        'select_data_import' => 'Select data import:',
-        'apply' => 'Apply',
-        'questions' => 'Questions',
-        'students' => 'Students',
-        'attempts' => 'Attempts',
-        'avg_score' => 'Avg Score',
-        'available_services' => 'Available Services',
-        'quick_access' => 'Quick Access',
-        'question_quality_analysis' => 'Question Quality Analysis',
-        'syllabus_validation' => 'Syllabus Validation',
-        'student_patterns' => 'Student Patterns',
-        'container_management' => 'Container Management',
-        'syllabus_import' => 'Syllabus Import',
-        'ods_exam_results' => 'ODS Exam Results',
-        'link_syllabus_questions' => 'Link Syllabus to Questions',
-        'duplicate_detection' => 'Duplicate Detection',
-        'discipline' => 'Discipline',
-        'course' => 'Course',
-        'syllabus_file' => 'Syllabus File',
-        'formats' => 'Formats: DOCX, DOC, PDF, TXT, ODT',
-        'upload_process' => 'Upload & Process',
-        'ods_file' => 'ODS Exam Results File',
-        'exam_export_file' => 'Exam export file (.ods)',
-        'convert_import' => 'Convert & Import',
-        'converter_description' => 'What the converter does:',
-        'converter_1' => 'Converts Russian/Swedish column names to English',
-        'converter_2' => 'Creates CSV with ; separator',
-        'converter_3' => 'Imports data to database automatically',
-        'converter_4' => 'Creates syllabus topics for new disciplines',
-        'converter_5' => 'Links questions to syllabus topics',
-        'discipline_name' => 'Discipline Name',
-        'course_number' => 'Course Number',
-        'link_questions_syllabus' => 'Link Questions to Syllabus',
-        'similarity_threshold' => 'Similarity Threshold',
-        'similarity_desc' => 'Questions with similarity above this threshold will be flagged as duplicates',
-        'detection_method' => 'Detection Method',
-        'embeddings' => 'Embeddings (more accurate)',
-        'tfidf' => 'TF-IDF (faster)',
-        'hybrid' => 'Hybrid (both)',
-        'detect_duplicates' => 'Detect Duplicates',
-        'duplicate_results' => 'Duplicate Detection Results',
-        'run_detection' => 'Run detection to see results',
-        'import_statistics' => 'Import Statistics',
-        'syllabuses' => 'Syllabuses',
-        'disciplines' => 'Disciplines',
-        'data_imports' => 'Data Imports',
-        'recent_syllabuses' => 'Recent Syllabuses',
-        'no_syllabuses' => 'No syllabuses uploaded yet',
-        'q1' => 'Q1',
-        'q2' => 'Q2',
-        'similarity' => 'Similarity',
-        'method' => 'Method',
-        'select_questions' => 'Select questions',
-        'select_syllabus_topic' => 'Select syllabus topic',
-        'link_selected' => 'Link selected',
-        'unlinked_questions' => 'Unlinked questions',
-        'no_unlinked_questions' => 'No unlinked questions',
-        'clear_data' => 'Clear Data',
-        'clear_data_confirm' => 'Are you sure you want to clear selected data? This action cannot be undone.',
-        'clear_data_success' => 'Data cleared successfully',
-        'clear_selected' => 'Clear Selected',
-        'cleared_items' => 'Cleared',
-        'select_items_to_clear' => 'Select items to clear',
-        'exam_results' => 'Exam Results',
-        'syllabuses' => 'Syllabuses',
-        'questions' => 'Questions',
-        'students' => 'Students',
-        'uploaded_files' => 'Uploaded Files',
-    ],
-];
-
-$t = $translations[$currentLang];
 
 require_once __DIR__ . '/includes/layout.php';
 require_once __DIR__ . '/db.php';
@@ -394,7 +52,9 @@ try {
         WHERE import_type = 'exam_results_upload' AND rows_imported > 0 
         ORDER BY import_id DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {}
+} catch (Throwable $e) {
+    error_log("Error fetching recent imports: " . $e->getMessage());
+}
 
 $importId = null;
 if (isset($_SESSION['ai_analytics_import_id'])) {
@@ -429,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_id'])) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['min_students_discrimination'])) {
     verify_csrf_or_fail();
-    $_SESSION['min_students_discrimination'] = max(2, (int)$_POST['min_students_discrimination']);
+    $_SESSION['min_students_discrimination'] = max(MIN_STUDENTS_DISCRIMINATION, (int)$_POST['min_students_discrimination']);
     foreach ($_SESSION as $key => $value) {
         if (strpos($key, 'discrimination_index_') === 0) {
             unset($_SESSION[$key]);
@@ -439,76 +99,285 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['min_students_discrimi
 
 $minStudentsDiscrimination = $_SESSION['min_students_discrimination'] ?? 10;
 
-logPerformance('Before services init');
-
 $ai = new AIAnalyticsService($pdo, $importId);
 $ai->setMinStudentsForDiscrimination($minStudentsDiscrimination);
-$tfidf = new TfIdfService($pdo);
+$embeddingsService = new EmbeddingsService('http://localhost:8000', true);
+$tfidf = new TfIdfService($pdo, $embeddingsService);
 $rules = new RuleClassifierService($pdo);
 $router = new AnalyticsServiceRouter ($pdo);
 
-logPerformance('After services init');
+function renderPagination($section, $pageParam, $currentPage, $totalPages, $sortColumn = '', $sortDirection = '', $totalItems = 0) {
+    if ($totalPages <= 1) return '';
+    
+    $sortParams = '';
+    if ($sortColumn) {
+        $sortParams = '&' . $section . '_sort=' . $sortColumn . '&' . $section . '_dir=' . $sortDirection;
+    }
+    
+    ob_start();
+    ?>
+    <div class="pagination">
+      <?php if ($currentPage > 1): ?>
+        <a href="?section=<?= $section ?>&<?= $pageParam ?>=<?= $currentPage - 1 ?><?= $sortParams ?>"><button>&laquo;</button></a>
+      <?php endif; ?>
+      <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+        <?php if ($i == $currentPage): ?>
+          <button class="active"><?= $i ?></button>
+        <?php elseif (abs($i - $currentPage) <= 2 || $i == 1 || $i == $totalPages): ?>
+          <a href="?section=<?= $section ?>&<?= $pageParam ?>=<?= $i ?><?= $sortParams ?>"><button><?= $i ?></button></a>
+        <?php elseif (abs($i - $currentPage) == 3): ?>
+          <span>...</span>
+        <?php endif; ?>
+      <?php endfor; ?>
+      <?php if ($currentPage < $totalPages): ?>
+        <a href="?section=<?= $section ?>&<?= $pageParam ?>=<?= $currentPage + 1 ?><?= $sortParams ?>"><button>&raquo;</button></a>
+      <?php endif; ?>
+    </div>
+    <p class="text-center text-muted small"><?= t('page') ?> <?= $currentPage ?> <?= t('of') ?> <?= $totalPages ?> (<?= $totalItems ?> <?= t('records') ?>)</p>
+    <?php
+    return ob_get_clean();
+}
 
 $section = $_GET['section'] ?? 'overview';
 $sections = [
-    'overview' => $t['overview'],
-    'validation' => $t['validation'],
-    'quality' => $t['quality'],
-    'correlation' => $t['correlations'],
-    'students' => $t['students'],
-    'semantic' => $t['semantic'],
-    'import' => $t['import'],
-    'rules' => $t['rules'],
-    'settings' => $t['settings'],
-    'containers' => $t['containers'],
+    'overview' => t('overview'),
+    'validation' => t('validation'),
+    'quality' => t('quality'),
+    'correlation' => t('correlations'),
+    'students' => t('students'),
+    'semantic' => t('semantic'),
+    'import' => t('import'),
+    'rules' => t('rules'),
+    'settings' => t('settings'),
 ];
 
-render_header($t['title']);
+render_header(t('title'));
 ?>
 
+<script>
+function showChart(chartType) {
+  const charts = ['quality', 'correlation', 'students', 'validation', 'semantic'];
+  charts.forEach(type => {
+    const chartDiv = document.getElementById('chart-' + type);
+    const btn = document.getElementById('btn-' + type);
+    if (chartDiv) {
+      chartDiv.style.display = type === chartType ? 'block' : 'none';
+    }
+    if (btn) {
+      if (type === chartType) {
+        btn.style.background = '#667eea';
+        btn.style.color = 'white';
+        btn.style.borderColor = '#667eea';
+      } else {
+        btn.style.background = 'white';
+        btn.style.color = '#64748b';
+        btn.style.borderColor = '#e2e8f0';
+      }
+    }
+  });
+}
+
+function showImportTab(tabType) {
+  const tabs = ['syllabus', 'ods', 'syllabus-link', 'duplicates'];
+  tabs.forEach(type => {
+    const tabDiv = document.getElementById('import-' + type);
+    const btn = document.getElementById('import-btn-' + type);
+    if (tabDiv) {
+      tabDiv.style.display = type === tabType ? 'block' : 'none';
+    }
+    if (btn) {
+      if (type === tabType) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    }
+  });
+}
+
+function showConfirm(message, onConfirm, form) {
+  const modal = document.getElementById('confirmModal');
+  const modalMessage = document.getElementById('confirmModalMessage');
+  const confirmBtn = document.getElementById('confirmModalConfirm');
+  const cancelBtn = document.getElementById('confirmModalCancel');
+  
+  modalMessage.textContent = message;
+  modal.classList.add('show');
+  
+  confirmBtn.onclick = function() {
+    modal.classList.remove('show');
+    onConfirm(form);
+  };
+  
+  cancelBtn.onclick = function() {
+    modal.classList.remove('show');
+  };
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const cancelBtn = document.getElementById('confirmModalCancel');
+  if (cancelBtn) {
+    cancelBtn.onclick = function() {
+      document.getElementById('confirmModal').classList.remove('show');
+    };
+  }
+});
+
+function refreshSyllabusTopics() {
+  fetch('?section=import&refresh_topics=1', {
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    const select = document.getElementById('syllabusTopicSelect');
+    const topicCount = document.getElementById('topicCount');
+    
+    select.innerHTML = '<option value="">-- <?= t('select_syllabus_topic') ?> --</option>';
+    
+    data.topics.forEach(topic => {
+      const option = document.createElement('option');
+      option.value = topic.syllabus_topic_id;
+      option.textContent = topic.discipline_name + ' - ' + topic.course_number + ': ' + topic.title;
+      select.appendChild(option);
+    });
+    
+    topicCount.textContent = data.topics.length;
+  })
+  .catch(error => {
+    console.error('Error refreshing topics:', error);
+  });
+}
+</script>
+
 <style>
-.ai-container { max-width: 1400px; margin: 0 auto; }
-.ai-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 30px; }
-.ai-nav { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 30px; }
-.ai-nav-btn { padding: 12px 20px; border: none; border-radius: 8px; background: #f1f5f9; cursor: pointer; transition: all 0.2s; font-weight: 500; }
-.ai-nav-btn:hover { background: #e2e8f0; transform: translateY(-2px); }
-.ai-nav-btn.active { background: #667eea; color: white; }
-.ai-section { display: none; animation: fadeIn 0.3s; }
+.ai-container { max-width: 1400px; margin: 0 auto; padding: 0 20px; }
+.ai-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; border-radius: 12px; margin-bottom: 40px; }
+.ai-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+.ai-header p { font-size: 16px; opacity: 0.9; }
+.ai-nav { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 40px; }
+.ai-nav-btn { flex: 1; min-width: 100px; padding: 12px 20px; border: 2px solid #e2e8f0; border-radius: 8px; background: #f1f5f9; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); font-weight: 500; font-size: 14px; text-decoration: none; color: #1a1d21; display: inline-block; text-align: center; }
+.ai-nav-btn:hover { background: #e2e8f0; transform: translateY(-2px); border-color: #cbd5e1; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-decoration: none; color: #1a1d21; }
+.ai-nav-btn:active { transform: translateY(0); }
+.ai-nav-btn.active { background: #667eea; color: white; border-color: #667eea; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3); text-decoration: none; }
+.ai-section { display: none; }
 .ai-section.active { display: block; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-.stat-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-.stat-value { font-size: 32px; font-weight: 700; color: #1a1d21; }
-.stat-label { color: #64748b; font-size: 14px; margin-top: 5px; }
-.table-container { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; margin-bottom: 40px; }
+.stat-card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.stat-card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,0.15); }
+.stat-value { font-size: 36px; font-weight: 700; color: #1a1d21; }
+.stat-label { color: #64748b; font-size: 15px; margin-top: 8px; font-weight: 500; }
+.table-container { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; margin-bottom: 30px; max-width: 1400px; margin-left: auto; margin-right: auto; overflow-x: auto; }
 .badge-soft { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; }
 .badge-soft.success { background: #d1fae5; color: #059669; }
 .badge-soft.warning { background: #fef3c7; color: #d97706; }
 .badge-soft.danger { background: #fee2e2; color: #dc2626; }
 .badge-soft.info { background: #dbeafe; color: #2563eb; }
+
+.quick-guide-card { animation: fadeInUp 0.6s ease-out; }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.quick-guide-item { 
+  animation: slideIn 0.5s ease-out forwards; 
+  opacity: 0;
+}
+.quick-guide-item:nth-child(1) { animation-delay: 0.1s; }
+.quick-guide-item:nth-child(2) { animation-delay: 0.2s; }
+.quick-guide-item:nth-child(3) { animation-delay: 0.3s; }
+.quick-guide-item:nth-child(4) { animation-delay: 0.4s; }
+.quick-guide-item:nth-child(5) { animation-delay: 0.5s; }
+.quick-guide-item:nth-child(6) { animation-delay: 0.6s; }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.quick-guide-item:hover { 
+  transform: translateX(8px) !important; 
+  box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+  border-color: #667eea;
+}
+
+.quick-guide-icon {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
 .container-card { border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 15px; }
 .container-card.running { border-color: #10b981; background: #f0fdf4; }
 .container-card.stopped { border-color: #ef4444; background: #fef2f2; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
-.form-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-.pagination { display: flex; gap: 5px; margin-top: 20px; justify-content: center; }
-.pagination button { padding: 8px 16px; border: 1px solid #e2e8f0; background: white; cursor: pointer; border-radius: 6px; }
-.pagination button:hover { background: #f1f5f9; }
-.pagination button.active { background: #667eea; color: white; border-color: #667eea; }
-.pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+.form-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; }
+.pagination { display: flex; gap: 8px; margin-top: 24px; justify-content: center; }
+.pagination button { padding: 10px 18px; border: 1px solid #e2e8f0; background: white; cursor: pointer; border-radius: 8px; font-size: 14px; transition: all 0.2s ease; }
+.pagination button:hover { background: #f1f5f9; transform: translateY(-1px); }
+.pagination button.active { background: #667eea; color: white; border-color: #667eea; box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3); }
+.pagination button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 table thead th a { color: inherit; text-decoration: none; }
 table thead th a:hover { text-decoration: underline; }
+table { border-collapse: separate; border-spacing: 0; width: auto; max-width: 100%; }
+table thead th { border-bottom: 2px solid #e2e8f0; border-right: 1px solid #e2e8f0; padding: 18px 14px; font-weight: 600; font-size: 16px !important; color: #1a1d21; background: #f8fafc; cursor: pointer; transition: background 0.2s; }
+table thead th:hover { background: #f1f5f9; }
+table thead th:last-child { border-right: none; }
+table thead th a { font-size: 16px !important; color: #1a1d21; cursor: pointer; transition: color 0.2s; }
+table thead th a:hover { color: #667eea; }
+table tbody td { border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; padding: 16px 14px; font-size: 16px; color: #334155; }
+table tbody td:last-child { border-right: none; }
+table tbody tr:hover { background: #f1f5f9; }
+table tbody tr:last-child td { border-bottom: none; }
+.sort-icon { font-size: 18px; margin-left: 6px; opacity: 0.6; }
+.sort-icon.active { opacity: 1; color: #667eea; }
+.nav-tabs { border-bottom: 2px solid #e2e8f0; }
+.nav-tabs .nav-link { border: 2px solid transparent; border-bottom: none; padding: 12px 20px; color: #64748b; font-weight: 500; font-size: 14px; }
+.nav-tabs .nav-link:hover { border-color: #e2e8f0; color: #1a1d21; }
+.nav-tabs .nav-link.active { border-color: #e2e8f0 #e2e8f0 #fff; color: #667eea; border-bottom: 2px solid #fff; margin-bottom: -2px; }
+.tab-pane { padding: 20px 0; }
+.form-control { border: 2px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 14px; transition: all 0.2s ease; }
+.form-control:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); outline: none; }
+.form-control:hover { border-color: #cbd5e1; }
+.form-select { border: 2px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 14px; transition: all 0.2s ease; }
+.form-select:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); outline: none; }
+.form-select:hover { border-color: #cbd5e1; }
+.btn { padding: 10px 20px; border-radius: 8px; font-weight: 500; font-size: 14px; border: none; transition: all 0.2s ease; cursor: pointer; }
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn-primary { background: #667eea; color: white; }
+.btn-primary:hover { background: #5a67d8; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3); }
+.btn-danger { background: #ef4444; color: white; }
+.btn-danger:hover { background: #dc2626; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3); }
+.btn-warning { background: #f59e0b; color: white; }
+.btn-warning:hover { background: #d97706; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.3); }
+.alert { border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; font-size: 14px; }
+.alert-success { background: #f0fdf4; border-color: #10b981; color: #059669; }
+.alert-danger { background: #fef2f2; border-color: #ef4444; color: #dc2626; }
+.alert-warning { background: #fffbeb; border-color: #f59e0b; color: #d97706; }
 </style>
 
 <div class="ai-container">
   <div class="ai-header">
-    <h1 class="h2 mb-2"><?= $t['title'] ?></h1>
-    <p class="mb-0 opacity-75"><?= $t['subtitle'] ?></p>
+    <h1 class="h2 mb-2"><?= t('title') ?></h1>
+    <p class="mb-0 opacity-75"><?= t('subtitle') ?></p>
   </div>
   
   <?php if ($importId === null && !empty($imports)): ?>
     <div class="alert alert-warning mb-4">
-      <strong><?= $t['select_data_import'] ?></strong>
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <strong><?= t('select_data_import') ?></strong>
+        <div class="btn-group" role="group">
+          <a href="?lang=kz" class="btn btn-sm <?= $currentLang === 'kz' ? 'btn-primary' : 'btn-outline-primary' ?>">Қазақша</a>
+          <a href="?lang=ru" class="btn btn-sm <?= $currentLang === 'ru' ? 'btn-primary' : 'btn-outline-primary' ?>">Русский</a>
+          <a href="?lang=en" class="btn btn-sm <?= $currentLang === 'en' ? 'btn-primary' : 'btn-outline-primary' ?>">English</a>
+        </div>
+      </div>
       <form method="post" class="d-flex gap-2 mt-2">
         <?= csrf_input() ?>
         <select name="import_id" class="form-select" style="max-width: 400px;">
@@ -516,116 +385,186 @@ table thead th a:hover { text-decoration: underline; }
             <option value="<?= (int)$imp['import_id'] ?>"><?= h($imp['source_filename']) ?> (<?= (int)$imp['rows_imported'] ?>)</option>
           <?php endforeach; ?>
         </select>
-        <button type="submit" class="btn btn-warning"><?= $t['apply'] ?></button>
+        <button type="submit" class="btn btn-warning"><?= t('apply') ?></button>
       </form>
     </div>
   <?php endif; ?>
   
   <div class="ai-nav">
     <?php foreach ($sections as $key => $label): ?>
-      <button class="ai-nav-btn <?= $section === $key ? 'active' : '' ?>" onclick="showSection('<?= $key ?>')"><?= $label ?></button>
+      <a href="?section=<?= $key ?>" class="ai-nav-btn <?= $section === $key ? 'active' : '' ?>"><?= $label ?></a>
     <?php endforeach; ?>
   </div>
   
   <div id="section-overview" class="ai-section <?= $section === 'overview' ? 'active' : '' ?>">
     <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-value">
-          <?php
-          if ($importId) {
-            try {
-              $stmt = $pdo->prepare("SELECT COUNT(DISTINCT question_id) FROM raw_exam_results WHERE import_id = ?");
+      <?php
+      $stats = ['questions' => 0, 'students' => 0, 'attempts' => 0, 'avg_score' => 0];
+      if ($importId) {
+          try {
+              $stmt = $pdo->prepare("
+                  SELECT 
+                      COUNT(DISTINCT question_id) as questions,
+                      COUNT(DISTINCT student_id) as students,
+                      COUNT(*) as attempts,
+                      AVG(score_after_appeal) as avg_score
+                  FROM raw_exam_results 
+                  WHERE import_id = ?
+              ");
               $stmt->execute([$importId]);
-              echo number_format($stmt->fetchColumn() ?: 0);
-            } catch (Throwable $e) { echo '0'; }
-          } else { echo '0'; }
-          ?>
-        </div>
-        <div class="stat-label"><?= $t['questions'] ?></div>
+              $stats = $stmt->fetch(PDO::FETCH_ASSOC);
+          } catch (Throwable $e) {
+    error_log("Error: " . $e->getMessage());
+}
+      }
+      ?>
+      <div class="stat-card">
+        <div class="stat-value"><?= number_format($stats['questions'] ?: 0) ?></div>
+        <div class="stat-label"><?= t('questions') ?></div>
       </div>
       <div class="stat-card">
-        <div class="stat-value">
-          <?php
-          if ($importId) {
-            try {
-              $stmt = $pdo->prepare("SELECT COUNT(DISTINCT student_id) FROM raw_exam_results WHERE import_id = ?");
-              $stmt->execute([$importId]);
-              echo number_format($stmt->fetchColumn() ?: 0);
-            } catch (Throwable $e) { echo '0'; }
-          } else { echo '0'; }
-          ?>
-        </div>
-        <div class="stat-label"><?= $t['students'] ?></div>
+        <div class="stat-value"><?= number_format($stats['students'] ?: 0) ?></div>
+        <div class="stat-label"><?= t('students') ?></div>
       </div>
       <div class="stat-card">
-        <div class="stat-value">
-          <?php
-          if ($importId) {
-            try {
-              $stmt = $pdo->prepare("SELECT COUNT(*) FROM raw_exam_results WHERE import_id = ?");
-              $stmt->execute([$importId]);
-              echo number_format($stmt->fetchColumn() ?: 0);
-            } catch (Throwable $e) { echo '0'; }
-          } else { echo '0'; }
-          ?>
-        </div>
-        <div class="stat-label"><?= $t['attempts'] ?></div>
+        <div class="stat-value"><?= number_format($stats['attempts'] ?: 0) ?></div>
+        <div class="stat-label"><?= t('attempts') ?></div>
       </div>
       <div class="stat-card">
-        <div class="stat-value">
-          <?php
-          if ($importId) {
-            try {
-              $stmt = $pdo->prepare("SELECT AVG(score_after_appeal) FROM raw_exam_results WHERE import_id = ?");
-              $stmt->execute([$importId]);
-              echo number_format($stmt->fetchColumn() ?: 0, 1);
-            } catch (Throwable $e) { echo '0'; }
-          } else { echo '0'; }
-          ?>
-        </div>
-        <div class="stat-label"><?= $t['avg_score'] ?></div>
+        <div class="stat-value"><?= number_format($stats['avg_score'] ?: 0, 1) ?></div>
+        <div class="stat-label"><?= t('avg_score') ?></div>
       </div>
     </div>
     
-    <div class="row g-4">
-      <div class="col-md-6">
-        <div class="card h-100">
-          <div class="card-header bg-primary text-white"><?= $t['available_services'] ?></div>
+    <div class="row g-4 margin-top-24">
+      <div class="col-md-12">
+        <div class="card h-100 quick-guide-card">
+          <div class="card-header"><?= t('quick_access') ?></div>
           <div class="card-body">
-            <ul class="list-group list-group-flush">
-              <?php foreach ($router->getActiveAnalysisModules() as $svc): ?>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                  <?= ucfirst($svc['module_name']) ?>
-                  <span class="badge bg-<?= $svc['operational_status'] === 'running' || $svc['operational_status'] === 'active' ? 'success' : 'secondary' ?> rounded-pill">
-                    <?= $svc['operational_status'] ?>
-                  </span>
-                </li>
-              <?php endforeach; ?>
-            </ul>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-6">
-        <div class="card h-100">
-          <div class="card-header bg-info text-white"><?= $t['quick_access'] ?></div>
-          <div class="card-body">
-            <div class="d-grid gap-2">
-              <a href="?section=quality" class="btn btn-outline-primary"><?= $t['question_quality_analysis'] ?></a>
-              <a href="?section=validation" class="btn btn-outline-success"><?= $t['syllabus_validation'] ?></a>
-              <a href="?section=students" class="btn btn-outline-warning"><?= $t['student_patterns'] ?></a>
-              <a href="?section=containers" class="btn btn-outline-dark"><?= $t['container_management'] ?></a>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+              <div class="quick-guide-item">
+                <div class="quick-guide-icon" style="background: #667eea;"><i class="bi bi-file-earmark"></i></div>
+                <div>
+                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_syllabus_import') ?></div>
+                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_syllabus_import_desc') ?></div>
+                </div>
+              </div>
+              <div class="quick-guide-item">
+                <div class="quick-guide-icon" style="background: #10b981;"><i class="bi bi-bar-chart"></i></div>
+                <div>
+                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_exam_import') ?></div>
+                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_exam_import_desc') ?></div>
+                </div>
+              </div>
+              <div class="quick-guide-item">
+                <div class="quick-guide-icon" style="background: #f59e0b;"><i class="bi bi-shuffle"></i></div>
+                <div>
+                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_sorting') ?></div>
+                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_sorting_desc') ?></div>
+                </div>
+              </div>
+              <div class="quick-guide-item">
+                <div class="quick-guide-icon" style="background: #ef4444;"><i class="bi bi-graph-up"></i></div>
+                <div>
+                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_quality') ?></div>
+                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_quality_desc') ?></div>
+                </div>
+              </div>
+              <div class="quick-guide-item">
+                <div class="quick-guide-icon" style="background: #8b5cf6;"><i class="bi bi-link"></i></div>
+                <div>
+                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_correlation') ?></div>
+                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_correlation_desc') ?></div>
+                </div>
+              </div>
+              <div class="quick-guide-item">
+                <div class="quick-guide-icon" style="background: #06b6d4;"><i class="bi bi-people"></i></div>
+                <div>
+                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_students') ?></div>
+                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_students_desc') ?></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
+
+    <div class="row g-4 margin-top-24">
+      <div class="col-md-12">
+        <div class="card h-100 import-stats-card">
+          <div class="card-header"><?= t('import_statistics') ?></div>
+          <div class="card-body">
+            <div style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px;">
+              <button onclick="showChart('quality')" id="btn-quality" class="chart-button active"><?= t('quality') ?></button>
+              <button onclick="showChart('correlation')" id="btn-correlation" class="chart-button"><?= t('correlation') ?></button>
+              <button onclick="showChart('students')" id="btn-students" class="chart-button"><?= t('students') ?></button>
+              <button onclick="showChart('validation')" id="btn-validation" class="chart-button"><?= t('validation') ?></button>
+              <button onclick="showChart('semantic')" id="btn-semantic" class="chart-button"><?= t('semantic') ?></button>
+            </div>
+            <div id="chart-quality" style="display: block;">
+              <h4 class="chart-title"><?= t('chart_quality_distribution') ?></h4>
+              <div class="chart-container">
+                <canvas id="qualityChart"></canvas>
+              </div>
+            </div>
+            <div id="chart-correlation" style="display: block;">
+              <h4 class="chart-title"><?= t('chart_correlation_distribution') ?></h4>
+              <div class="chart-container">
+                <canvas id="correlationChart"></canvas>
+              </div>
+            </div>
+            <div id="chart-students" style="display: block;">
+              <h4 class="chart-title"><?= t('chart_student_risk_patterns') ?></h4>
+              <div class="chart-container">
+                <canvas id="studentsChart"></canvas>
+              </div>
+            </div>
+            <div id="chart-validation" style="display: block;">
+              <h4 class="chart-title"><?= t('chart_validation_status') ?></h4>
+              <div class="chart-container">
+                <canvas id="validationChart"></canvas>
+              </div>
+            </div>
+            <div id="chart-semantic" style="display: block;">
+              <h4 class="chart-title"><?= t('chart_semantic_analysis') ?></h4>
+              <div class="chart-container">
+                <canvas id="semanticChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    </div>
   </div>
   
   <div id="section-import" class="ai-section <?= $section === 'import' ? 'active' : '' ?>">
+    <div class="table-container">
     <?php
     $importError = null;
     $importSuccess = null;
     $importStats = [];
+    
+    if (isset($_GET['refresh_topics']) && $_GET['refresh_topics'] == '1') {
+        header('Content-Type: application/json');
+        try {
+            $stmt = $pdo->query("
+                SELECT st.syllabus_topic_id, st.discipline_name, st.course_number, st.title
+                FROM ai_syllabus_topics st
+                INNER JOIN user_syllabuses us ON 
+                    us.discipline_name = st.discipline_name
+                ORDER BY st.discipline_name, st.course_number, st.title
+                LIMIT 100
+            ");
+            $syllabusTopics = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['topics' => $syllabusTopics]);
+        } catch (Throwable $e) {
+            echo json_encode(['topics' => []]);
+        }
+        exit;
+    }
     
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         verify_csrf_or_fail();
@@ -666,7 +605,10 @@ table thead th a:hover { text-decoration: underline; }
                     
 
                     $topics = parseSyllabusTopics($text, $disciplineName, $courseNumber);
+                    $questions = parseSyllabusQuestions($text);
                     
+                    foreach ($questions as $q) {
+                    }
 
                     $pdo->beginTransaction();
                     
@@ -706,13 +648,32 @@ table thead th a:hover { text-decoration: underline; }
                     
 
                     $stmtTopic = $pdo->prepare("
-                        INSERT IGNORE INTO ai_syllabus_topics (discipline_name, course_number, topic_code, title, keywords)
+                        INSERT INTO ai_syllabus_topics (discipline_name, course_number, topic_code, title, keywords)
                         VALUES (:disc, :course, :code, :title, :keywords)
+                    ");
+                    
+                    $checkTopicStmt = $pdo->prepare("
+                        SELECT syllabus_topic_id FROM ai_syllabus_topics 
+                        WHERE discipline_name = :disc 
+                        AND course_number = :course 
+                        AND title = :title
+                        LIMIT 1
                     ");
                     
                     $savedTopics = 0;
                     foreach ($topics as $topic) {
                         try {
+                            $checkTopicStmt->execute([
+                                ':disc' => $disciplineName,
+                                ':course' => $courseNumber,
+                                ':title' => $topic['title']
+                            ]);
+                            $existing = $checkTopicStmt->fetch();
+                            if ($existing) {
+                                error_log("Topic already exists: " . $topic['title']);
+                                continue;
+                            }
+                            
                             $stmtTopic->execute([
                                 ':disc' => $disciplineName,
                                 ':course' => $courseNumber,
@@ -720,25 +681,99 @@ table thead th a:hover { text-decoration: underline; }
                                 ':title' => $topic['title'],
                                 ':keywords' => $topic['keywords']
                             ]);
-                            $savedTopics++;
-                        } catch (Throwable $e) {}
+                            if ($stmtTopic->rowCount() > 0) {
+                                $savedTopics++;
+                                error_log("Topic saved: " . $topic['title']);
+                            }
+                        } catch (Throwable $e) {
+    error_log("Error saving topic: " . $e->getMessage());
+}
+                    }
+                    
+                    $savedQuestions = 0;
+                    if (!empty($questions) && !empty($topics)) {
+                        $firstTopicCode = $topics[0]['code'];
+                        
+                        $stmtTopicId = $pdo->prepare("
+                            SELECT syllabus_topic_id FROM ai_syllabus_topics 
+                            WHERE discipline_name = :disc 
+                            AND course_number = :course 
+                            AND topic_code = :code
+                            LIMIT 1
+                        ");
+                        $stmtTopicId->execute([
+                            ':disc' => $disciplineName,
+                            ':course' => $courseNumber,
+                            ':code' => $firstTopicCode
+                        ]);
+                        $topicId = $stmtTopicId->fetchColumn();
+                        
+                        if ($topicId) {
+                            $stmtUpdateQuestion = $pdo->prepare("
+                                UPDATE hier_questions 
+                                SET question_text = :text, syllabus_topic_id = :topic_id
+                                WHERE question_id = :qid
+                            ");
+                            
+                            $stmtInsertQuestion = $pdo->prepare("
+                                INSERT INTO hier_questions (question_text, max_score, question_type)
+                                VALUES (:text, 100, 'single_choice')
+                            ");
+                            
+                            foreach ($questions as $question) {
+                                try {
+                                    $questionId = $question['number'] ?? null;
+                                    
+                                    if ($questionId) {
+                                        $stmtUpdateQuestion->execute([
+                                            ':text' => $question['text'],
+                                            ':topic_id' => $topicId,
+                                            ':qid' => $questionId
+                                        ]);
+                                        if ($stmtUpdateQuestion->rowCount() > 0) {
+                                            $savedQuestions++;
+                                        } else {
+                                            $stmtInsertQuestion->execute([
+                                                ':text' => $question['text'],
+                                                ':topic_id' => $topicId,
+                                                ':disc' => $disciplineName
+                                            ]);
+                                            $savedQuestions++;
+                                        }
+                                    } else {
+                                        $stmtInsertQuestion->execute([
+                                            ':text' => $question['text'],
+                                            ':topic_id' => $topicId,
+                                            ':disc' => $disciplineName
+                                        ]);
+                                        $savedQuestions++;
+                                    }
+                                } catch (Throwable $e) {
+    error_log("Error saving question: " . $e->getMessage());
+}
+                            }
+                        }
                     }
                     
                     $pdo->commit();
                     
-                    $importSuccess = "Syllabus uploaded! Topics saved: {$savedTopics}";
+                    $importSuccess = "Syllabus uploaded! Topics saved: {$savedTopics}, Questions saved: {$savedQuestions}";
                     $importStats = [
                         'type' => 'syllabus',
                         'file_name' => $file['name'],
                         'extension' => $extension,
                         'text_length' => strlen($text),
                         'topics_found' => $savedTopics,
+                        'questions_found' => $savedQuestions,
                         'keywords' => $keywords,
                     ];
                     
                 } catch (Throwable $e) {
+                    error_log("Syllabus upload error: " . $e->getMessage());
                     if ($pdo->inTransaction()) {
-                        try { $pdo->rollBack(); } catch (Throwable $e) {}
+                        try { $pdo->rollBack(); } catch (Throwable $e) {
+    error_log("Error: " . $e->getMessage());
+}
                     }
                     $importError = 'Error: ' . $e->getMessage();
                 }
@@ -812,7 +847,7 @@ table thead th a:hover { text-decoration: underline; }
                         ");
 
                         $stmtQuestion = $pdo->prepare("INSERT IGNORE INTO questions (question_id, question_text, max_score, question_type) VALUES (:qid, :qtext, :max, 'single')");
-                        $stmtStudent = $pdo->prepare("INSERT IGNORE INTO students (student_id, course_number) VALUES (:sid, 3)");
+                        $stmtStudent = $pdo->prepare("INSERT IGNORE INTO students (student_id, course_number) VALUES (:sid, " . DEFAULT_COURSE . ")");
                         $stmtHierQuestion = $pdo->prepare("INSERT IGNORE INTO hier_questions (question_id, question_text, max_score, question_type) VALUES (:qid, :qtext, :max, 'single_choice')");
 
                         foreach ($csvData as $index => $row) {
@@ -839,8 +874,8 @@ table thead th a:hover { text-decoration: underline; }
                                 }
 
                                 if (!empty($questionId)) {
-                                    $stmtQuestion->execute([':qid' => $questionId, ':qtext' => '', ':max' => 100]);
-                                    $stmtHierQuestion->execute([':qid' => $questionId, ':qtext' => '', ':max' => 100]);
+                                    $stmtQuestion->execute([':qid' => $questionId, ':qtext' => '', ':max' => MAX_SCORE]);
+                                    $stmtHierQuestion->execute([':qid' => $questionId, ':qtext' => '', ':max' => MAX_SCORE]);
                                 }
 
                                 if (!empty($studentId)) {
@@ -865,10 +900,12 @@ table thead th a:hover { text-decoration: underline; }
                                         $disciplines[$disciplineName] = true;
                                     }
                                 }
-                            } catch (Throwable $e) {}
+                            } catch (Throwable $e) {
+    error_log("Error: " . $e->getMessage());
+}
                         }
 
-                        $pdo->exec("COMMIT");
+                        $pdo->commit();
 
                         $stmt = $pdo->prepare("UPDATE imports_log SET rows_imported = :i WHERE import_id = :id");
                         $stmt->execute([':i' => $inserted, ':id' => $importId]);
@@ -876,7 +913,7 @@ table thead th a:hover { text-decoration: underline; }
 
                         foreach ($disciplines as $disciplineName => $_) {
                             try {
-                                $stmt = $pdo->prepare("INSERT IGNORE INTO ai_syllabus_topics (discipline_name, course_number, topic_code, title, keywords) VALUES (:disc, 3, :code, :title, :keywords)");
+                                $stmt = $pdo->prepare("INSERT IGNORE INTO ai_syllabus_topics (discipline_name, course_number, topic_code, title, keywords) VALUES (:disc, " . DEFAULT_COURSE . ", :code, :title, :keywords)");
                                 $code = 'AUTO_' . md5($disciplineName);
                                 $stmt->execute([
                                     ':disc' => $disciplineName,
@@ -884,7 +921,9 @@ table thead th a:hover { text-decoration: underline; }
                                     ':title' => $disciplineName,
                                     ':keywords' => mb_strtolower($disciplineName, 'UTF-8')
                                 ]);
-                            } catch (Throwable $e) {}
+                            } catch (Throwable $e) {
+    error_log("Error: " . $e->getMessage());
+}
                         }
                     }
                     
@@ -900,6 +939,7 @@ table thead th a:hover { text-decoration: underline; }
                     ];
                     
                 } catch (Throwable $e) {
+                    error_log("ODS import error: " . $e->getMessage());
                     $importError = 'Error: ' . $e->getMessage();
                 }
             }
@@ -921,6 +961,7 @@ table thead th a:hover { text-decoration: underline; }
                 $linkedCount = $stmt->rowCount();
                 $importSuccess = "Auto-linked {$linkedCount} questions to '{$disciplineName}' syllabus";
             } catch (Throwable $e) {
+                error_log("Auto-link error: " . $e->getMessage());
                 $importError = 'Error: ' . $e->getMessage();
             }
         }
@@ -944,6 +985,7 @@ table thead th a:hover { text-decoration: underline; }
                     }
                     $importSuccess = "Linked {$linkedCount} questions to syllabus topic";
                 } catch (Throwable $e) {
+                    error_log("Link questions error: " . $e->getMessage());
                     $importError = 'Error: ' . $e->getMessage();
                 }
             } else {
@@ -962,25 +1004,25 @@ table thead th a:hover { text-decoration: underline; }
                 if (in_array('exam_results', $clearOptions)) {
                     $pdo->exec("DELETE FROM raw_exam_results");
                     $pdo->exec("DELETE FROM imports_log");
-                    $clearedItems[] = $t['exam_results'];
+                    $clearedItems[] = t('exam_results');
                 }
                 
                 if (in_array('syllabuses', $clearOptions)) {
                     $pdo->exec("DELETE FROM ai_syllabus_topics");
                     $pdo->exec("DELETE FROM user_syllabuses");
-                    $clearedItems[] = $t['syllabuses'];
+                    $clearedItems[] = t('syllabuses');
                 }
                 
                 if (in_array('questions', $clearOptions)) {
                     $pdo->exec("DELETE FROM hier_questions");
                     $pdo->exec("DELETE FROM questions");
                     $pdo->exec("DELETE FROM ai_question_ai");
-                    $clearedItems[] = $t['questions'];
+                    $clearedItems[] = t('questions');
                 }
                 
                 if (in_array('students', $clearOptions)) {
                     $pdo->exec("DELETE FROM students");
-                    $clearedItems[] = $t['students'];
+                    $clearedItems[] = t('students');
                 }
                 
                 if (in_array('uploads', $clearOptions)) {
@@ -989,7 +1031,7 @@ table thead th a:hover { text-decoration: underline; }
                     if (is_dir($uploadsDir)) {
                         $files = glob($uploadsDir . '/*');
                         foreach ($files as $file) {
-                            if (is_file($file) && basename($file) !== '.gitkeep') {
+                            if (is_file($file) && basename($file) !== '.gitkeep' && strpos(realpath($file), realpath($uploadsDir)) === 0) {
                                 unlink($file);
                             }
                         }
@@ -998,24 +1040,29 @@ table thead th a:hover { text-decoration: underline; }
                         if (is_dir($syllabusesDir)) {
                             $syllabusFiles = glob($syllabusesDir . '/*');
                             foreach ($syllabusFiles as $file) {
-                                if (is_file($file)) {
+                                if (is_file($file) && strpos(realpath($file), realpath($syllabusesDir)) === 0) {
                                     unlink($file);
                                 }
                             }
                         }
                     }
-                    $clearedItems[] = $t['uploaded_files'];
+                    $clearedItems[] = t('uploaded_files');
                 }
                 
                 if (empty($clearedItems)) {
-                    $importError = $t['select_items_to_clear'];
+                    $importError = t('select_items_to_clear');
                 } else {
                     $pdo->commit();
-                    $importSuccess = $t['cleared_items'] . ': ' . implode(', ', $clearedItems);
+                    $importSuccess = t('cleared_items') . ': ' . implode(', ', $clearedItems);
+                    header('Location: ?section=import');
+                    exit;
                 }
             } catch (Throwable $e) {
+                error_log("Clear data error: " . $e->getMessage());
                 if ($pdo->inTransaction()) {
-                    try { $pdo->rollBack(); } catch (Throwable $e) {}
+                    try { $pdo->rollBack(); } catch (Throwable $e) {
+    error_log("Error: " . $e->getMessage());
+}
                 }
                 $importError = 'Error: ' . $e->getMessage();
             }
@@ -1031,6 +1078,7 @@ table thead th a:hover { text-decoration: underline; }
         ");
         $existingSyllabuses = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
+        error_log("Error fetching syllabuses: " . $e->getMessage());
         $existingSyllabuses = [];
     }
     ?>
@@ -1092,62 +1140,48 @@ table thead th a:hover { text-decoration: underline; }
             <input type="hidden" name="clear_data" value="1">
             <div class="mb-2">
               <input type="checkbox" name="clear_options[]" value="exam_results" id="clear_exam_results" class="form-check-input">
-              <label for="clear_exam_results" class="form-check-label"><?= $t['exam_results'] ?></label>
+              <label for="clear_exam_results" class="form-check-label"><?= t('exam_results') ?></label>
             </div>
             <div class="mb-2">
               <input type="checkbox" name="clear_options[]" value="syllabuses" id="clear_syllabuses" class="form-check-input">
-              <label for="clear_syllabuses" class="form-check-label"><?= $t['syllabuses'] ?></label>
+              <label for="clear_syllabuses" class="form-check-label"><?= t('syllabuses') ?></label>
             </div>
             <div class="mb-2">
               <input type="checkbox" name="clear_options[]" value="questions" id="clear_questions" class="form-check-input">
-              <label for="clear_questions" class="form-check-label"><?= $t['questions'] ?></label>
+              <label for="clear_questions" class="form-check-label"><?= t('questions') ?></label>
             </div>
             <div class="mb-2">
               <input type="checkbox" name="clear_options[]" value="students" id="clear_students" class="form-check-input">
-              <label for="clear_students" class="form-check-label"><?= $t['students'] ?></label>
+              <label for="clear_students" class="form-check-label"><?= t('students') ?></label>
             </div>
             <div class="mb-2">
               <input type="checkbox" name="clear_options[]" value="uploads" id="clear_uploads" class="form-check-input">
-              <label for="clear_uploads" class="form-check-label"><?= $t['uploaded_files'] ?></label>
+              <label for="clear_uploads" class="form-check-label"><?= t('uploaded_files') ?></label>
             </div>
-            <button type="submit" class="btn btn-danger btn-sm w-100 mt-2" onsubmit="return confirm('<?= $t['clear_data_confirm'] ?>')"><?= $t['clear_selected'] ?></button>
+            <button type="submit" class="btn btn-danger btn-sm w-100 mt-2" onclick="showConfirm('<?= t('clear_data_confirm') ?>', function(form) { form.submit(); }, this.form); return false;"><?= t('clear_selected') ?></button>
           </form>
         </div>
       </div>
-      <form method="post" class="d-inline">
-        <?= csrf_input() ?>
-        <input type="hidden" name="set_language" value="1">
-
-      </form>
     </div>
     
-    <ul class="nav nav-tabs mb-4" id="importTabs" role="tablist">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="syllabus-tab" data-bs-toggle="tab" data-bs-target="#syllabus" type="button" role="tab"><?= $t['syllabus_import'] ?></button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="ods-tab" data-bs-toggle="tab" data-bs-target="#ods" type="button" role="tab"><?= $t['ods_exam_results'] ?></button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="syllabus-link-tab" data-bs-toggle="tab" data-bs-target="#syllabus-link" type="button" role="tab"><?= $t['link_syllabus_questions'] ?></button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="duplicates-tab" data-bs-toggle="tab" data-bs-target="#duplicates" type="button" role="tab"><?= $t['duplicate_detection'] ?></button>
-      </li>
-    </ul>
+    <div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px;">
+      <button onclick="showImportTab('syllabus')" id="import-btn-syllabus" class="chart-button active"><?= t('syllabus_import') ?></button>
+      <button onclick="showImportTab('ods')" id="import-btn-ods" class="chart-button"><?= t('ods_exam_results') ?></button>
+      <button onclick="showImportTab('syllabus-link')" id="import-btn-syllabus-link" class="chart-button"><?= t('link_syllabus_questions') ?></button>
+      <button onclick="showImportTab('duplicates')" id="import-btn-duplicates" class="chart-button"><?= t('duplicate_detection') ?></button>
+    </div>
     
-    <div class="tab-content" id="importTabsContent">
-      <div class="tab-pane fade show active" id="syllabus" role="tabpanel">
+    <div id="import-syllabus" style="display: block;">
         <form method="post" enctype="multipart/form-data" class="mb-4">
           <?= csrf_input() ?>
           
           <div class="row g-3">
             <div class="col-md-8">
-              <label class="form-label fw-semibold"><?= $t['discipline'] ?></label>
+              <label class="form-label fw-semibold"><?= t('discipline') ?></label>
               <input type="text" name="discipline_name" class="form-control" required placeholder="e.g.: Pediatrics">
             </div>
             <div class="col-md-4">
-              <label class="form-label fw-semibold"><?= $t['course'] ?></label>
+              <label class="form-label fw-semibold"><?= t('course') ?></label>
               <select name="course_number" class="form-select">
                 <option value="1">1st year</option>
                 <option value="2">2nd year</option>
@@ -1157,47 +1191,47 @@ table thead th a:hover { text-decoration: underline; }
               </select>
             </div>
             <div class="col-12">
-              <label class="form-label fw-semibold"><?= $t['syllabus_file'] ?></label>
+              <label class="form-label fw-semibold"><?= t('syllabus_file') ?></label>
               <input type="file" name="syllabus_file" class="form-control" accept=".docx,.doc,.pdf,.txt,.odt" required>
-              <small class="text-muted"><?= $t['formats'] ?></small>
+              <small class="text-muted"><?= t('formats') ?></small>
             </div>
             <div class="col-12">
-              <button type="submit" class="btn btn-primary"><?= $t['upload_process'] ?></button>
+              <button type="submit" class="btn btn-primary"><?= t('upload_process') ?></button>
             </div>
           </div>
         </form>
-      </div>
-      
-      <div class="tab-pane fade" id="ods" role="tabpanel">
+    </div>
+    
+    <div id="import-ods" style="display: none;">
         <form method="post" enctype="multipart/form-data" class="mb-4">
           <?= csrf_input() ?>
           
           <div class="mb-3">
-            <label class="form-label fw-semibold"><?= $t['ods_file'] ?></label>
+            <label class="form-label fw-semibold"><?= t('ods_file') ?></label>
             <input type="file" name="ods_file" class="form-control" accept=".ods" required>
-            <small class="text-muted"><?= $t['exam_export_file'] ?></small>
+            <small class="text-muted"><?= t('exam_export_file') ?></small>
           </div>
-          <button type="submit" class="btn btn-primary"><?= $t['convert_import'] ?></button>
+          <button type="submit" class="btn btn-primary"><?= t('convert_import') ?></button>
         </form>
         
         <div class="text-muted small">
-          <p><strong><?= $t['converter_description'] ?></strong></p>
+          <p><strong><?= t('converter_description') ?></strong></p>
           <ul class="mb-0">
-            <li><?= $t['converter_1'] ?></li>
-            <li><?= $t['converter_2'] ?></li>
-            <li><?= $t['converter_3'] ?></li>
-            <li><?= $t['converter_4'] ?></li>
-            <li><?= $t['converter_5'] ?></li>
+            <li><?= t('converter_1') ?></li>
+            <li><?= t('converter_2') ?></li>
+            <li><?= t('converter_3') ?></li>
+            <li><?= t('converter_4') ?></li>
+            <li><?= t('converter_5') ?></li>
           </ul>
         </div>
-      </div>
-      
-      <div class="tab-pane fade" id="syllabus-link" role="tabpanel">
+    </div>
+    
+    <div id="import-syllabus-link" style="display: none;">
         <div class="alert alert-info">
-          <strong><?= $t['select_questions'] ?></strong>
+          <strong><?= t('select_questions') ?></strong>
           <ul class="mb-0 mt-2">
-            <li>Выберите конкретные вопросы для привязки к силлабусу</li>
-            <li>Выберите тему силлабуса из выпадающего списка</li>
+            <li><?= t('select_questions_for_link') ?></li>
+            <li><?= t('select_topic_from_dropdown') ?></li>
           </ul>
         </div>
         
@@ -1223,6 +1257,7 @@ table thead th a:hover { text-decoration: underline; }
             ");
             $allQuestions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {
+            error_log("Error fetching questions: " . $e->getMessage());
             $queryError = $e->getMessage();
         }
         
@@ -1230,7 +1265,7 @@ table thead th a:hover { text-decoration: underline; }
         $syllabusTopics = [];
         try {
             $stmt = $pdo->query("
-                SELECT st.syllabus_topic_id, st.discipline_name, st.course_number, st.title
+                SELECT DISTINCT st.syllabus_topic_id, st.discipline_name, st.course_number, st.title
                 FROM ai_syllabus_topics st
                 INNER JOIN user_syllabuses us ON 
                     us.discipline_name = st.discipline_name
@@ -1238,7 +1273,9 @@ table thead th a:hover { text-decoration: underline; }
                 LIMIT 100
             ");
             $syllabusTopics = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Throwable $e) {}
+        } catch (Throwable $e) {
+    error_log("Error: " . $e->getMessage());
+}
         ?>
         
         <form method="post" class="mb-4">
@@ -1246,25 +1283,30 @@ table thead th a:hover { text-decoration: underline; }
           <input type="hidden" name="link_selected_questions" value="1">
           
           <div class="mb-3">
-            <label class="form-label fw-semibold"><?= $t['select_syllabus_topic'] ?> (Доступно тем: <?= count($syllabusTopics) ?>)</label>
-            <select name="syllabus_topic_id" class="form-select" required>
-              <option value="">-- <?= $t['select_syllabus_topic'] ?> --</option>
-              <?php foreach ($syllabusTopics as $topic): ?>
-                <option value="<?= (int)$topic['syllabus_topic_id'] ?>">
-                  <?= h($topic['discipline_name']) ?> - <?= h($topic['course_number']) ?>: <?= h($topic['title']) ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
+            <label class="form-label fw-semibold"><?= t('select_syllabus_topic') ?> (<?= t('available_topics') ?>: <span id="topicCount"><?= count($syllabusTopics) ?></span>)</label>
+            <div style="display: flex; gap: 8px;">
+              <select name="syllabus_topic_id" class="form-select" required id="syllabusTopicSelect">
+                <option value="">-- <?= t('select_syllabus_topic') ?> --</option>
+                <?php foreach ($syllabusTopics as $topic): ?>
+                  <option value="<?= (int)$topic['syllabus_topic_id'] ?>">
+                    <?= h($topic['discipline_name']) ?> - <?= h($topic['course_number']) ?>: <?= h($topic['title']) ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+              <button type="button" class="btn btn-outline-secondary" onclick="refreshSyllabusTopics()" title="<?= t('refresh') ?>">
+                <i class="bi bi-arrow-clockwise"></i>
+              </button>
+            </div>
           </div>
           
           <div class="mb-3">
-            <label class="form-label fw-semibold">Все вопросы (Всего: <?= $totalQuestions ?>, Показано: <?= count($allQuestions) ?>)</label>
-            <input type="text" id="questionSearch" class="form-control mb-2" placeholder="Поиск по ID, вопросу или дисциплине..." onkeyup="filterQuestions()">
+            <label class="form-label fw-semibold"><?= t('all_questions') ?> (<?= t('total') ?>: <?= $totalQuestions ?>, <?= t('shown') ?>: <?= count($allQuestions) ?>)</label>
+            <input type="text" id="questionSearch" class="form-control mb-2" placeholder="<?= t('search_placeholder') ?>" onkeyup="filterQuestions()">
             <?php if ($queryError): ?>
-              <div class="alert alert-danger">Ошибка запроса: <?= h($queryError) ?></div>
+              <div class="alert alert-danger"><?= t('query_error') ?> <?= h($queryError) ?></div>
             <?php endif; ?>
             <?php if (empty($allQuestions)): ?>
-              <p class="text-muted">Нет вопросов в базе данных</p>
+              <p class="text-muted"><?= t('no_questions_db') ?></p>
             <?php else: ?>
               <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                 <table class="table table-sm table-hover" id="questionsTable">
@@ -1284,7 +1326,7 @@ table thead th a:hover { text-decoration: underline; }
                         <td><?= (int)$q['question_id'] ?></td>
                         <td><?= h(mb_substr($q['question_text'] ?? '', 0, 80)) ?></td>
                         <td><?= h($q['discipline_name'] ?? '') ?></td>
-                        <td><?= $q['syllabus_title'] ? h($q['syllabus_title']) : '<span class="text-muted">Не привязан</span>' ?></td>
+                        <td><?= $q['syllabus_title'] ? h($q['syllabus_title']) : '<span class="text-muted">' . t('not_linked') . '</span>' ?></td>
                       </tr>
                     <?php endforeach; ?>
                   </tbody>
@@ -1293,7 +1335,7 @@ table thead th a:hover { text-decoration: underline; }
             <?php endif; ?>
           </div>
           
-          <button type="submit" class="btn btn-primary" <?= empty($allQuestions) ? 'disabled' : '' ?>><?= $t['link_selected'] ?></button>
+          <button type="submit" class="btn btn-primary" <?= empty($allQuestions) ? 'disabled' : '' ?>><?= t('link_selected') ?></button>
         </form>
       </div>
       
@@ -1302,43 +1344,61 @@ table thead th a:hover { text-decoration: underline; }
           <?= csrf_input() ?>
           
           <div class="mb-3">
-            <label class="form-label fw-semibold"><?= $t['similarity_threshold'] ?></label>
-            <input type="number" step="0.01" min="0" max="1" name="dedup_threshold" class="form-control" value="0.85">
-            <small class="text-muted"><?= $t['similarity_desc'] ?></small>
+            <label class="form-label fw-semibold"><?= t('similarity_threshold') ?></label>
+            <input type="number" step="0.01" min="0" max="1" name="dedup_threshold" class="form-control" value="<?= DEFAULT_DEDUP_THRESHOLD ?>">
+            <small class="text-muted"><?= t('similarity_desc') ?></small>
           </div>
           
           <div class="mb-3">
-            <label class="form-label fw-semibold"><?= $t['detection_method'] ?></label>
+            <label class="form-label fw-semibold"><?= t('detection_method') ?></label>
             <select name="dedup_method" class="form-select">
-              <option value="embeddings"><?= $t['embeddings'] ?></option>
-              <option value="tfidf"><?= $t['tfidf'] ?></option>
-              <option value="hybrid"><?= $t['hybrid'] ?></option>
+              <option value="embeddings"><?= t('embeddings') ?></option>
+              <option value="tfidf"><?= t('tfidf') ?></option>
+              <option value="hybrid"><?= t('hybrid') ?></option>
             </select>
           </div>
           
-          <button type="submit" class="btn btn-primary"><?= $t['detect_duplicates'] ?></button>
+          <button type="submit" class="btn btn-primary"><?= t('detect_duplicates') ?></button>
         </form>
         
         <?php if ($importId !== null): ?>
           <div class="mt-4">
-            <h6 class="fw-semibold mb-3"><?= $t['duplicate_results'] ?></h6>
+            <h6 class="fw-semibold mb-3"><?= t('duplicate_results') ?></h6>
             <div class="table-responsive">
               <table class="table table-sm">
-                <thead><tr><th><?= $t['q1'] ?></th><th><?= $t['q2'] ?></th><th><?= $t['similarity'] ?></th><th><?= $t['method'] ?></th></tr></thead>
+                <thead><tr><th><?= t('q1') ?></th><th><?= t('q2') ?></th><th><?= t('similarity') ?></th><th><?= t('method') ?></th></tr></thead>
                 <tbody>
-                  <tr><td colspan="4" class="text-muted"><?= $t['run_detection'] ?></td></tr>
+                  <tr><td colspan="4" class="text-muted"><?= t('run_detection') ?></td></tr>
                 </tbody>
               </table>
             </div>
           </div>
         <?php endif; ?>
-      </div>
+    </div>
+    
+    <div id="import-duplicates" style="display: none;">
+        <div class="alert alert-info">
+          <strong><?= t('duplicate_detection') ?></strong>
+          <p class="mb-0 mt-2"><?= t('run_detection') ?></p>
+        </div>
+        
+        <div class="mb-3">
+          <h6 class="fw-semibold mb-3"><?= t('duplicate_results') ?></h6>
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead><tr><th><?= t('q1') ?></th><th><?= t('q2') ?></th><th><?= t('similarity') ?></th><th><?= t('method') ?></th></tr></thead>
+              <tbody>
+                <tr><td colspan="4" class="text-muted"><?= t('run_detection') ?></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
     </div>
     
     <div class="row g-4">
       <div class="col-md-6">
         <div class="card">
-          <div class="card-header bg-primary text-white"><?= $t['import_statistics'] ?></div>
+          <div class="card-header bg-primary text-white"><?= t('import_statistics') ?></div>
           <div class="card-body">
             <?php
             try {
@@ -1349,23 +1409,24 @@ table thead th a:hover { text-decoration: underline; }
               $stmt = $pdo->query("SELECT COUNT(*) as count FROM imports_log WHERE import_type = 'exam_results_upload'");
               $totalImports = $stmt->fetch()['count'] ?? 0;
             } catch (Throwable $e) {
-              $totalSyllabuses = 0;
-              $totalDisciplines = 0;
-              $totalImports = 0;
+                error_log("Error fetching stats: " . $e->getMessage());
+                $totalSyllabuses = 0;
+                $totalDisciplines = 0;
+                $totalImports = 0;
             }
             ?>
             <div class="stats-grid">
               <div class="stat-item">
                 <div class="stat-value"><?= $totalSyllabuses ?></div>
-                <div class="stat-label"><?= $t['syllabuses'] ?></div>
+                <div class="stat-label"><?= t('syllabuses') ?></div>
               </div>
               <div class="stat-item">
                 <div class="stat-value"><?= $totalDisciplines ?></div>
-                <div class="stat-label"><?= $t['disciplines'] ?></div>
+                <div class="stat-label"><?= t('disciplines') ?></div>
               </div>
               <div class="stat-item">
                 <div class="stat-value"><?= $totalImports ?></div>
-                <div class="stat-label"><?= $t['data_imports'] ?></div>
+                <div class="stat-label"><?= t('data_imports') ?></div>
               </div>
             </div>
           </div>
@@ -1373,10 +1434,10 @@ table thead th a:hover { text-decoration: underline; }
       </div>
       <div class="col-md-6">
         <div class="card">
-          <div class="card-header bg-info text-white"><?= $t['recent_syllabuses'] ?></div>
+          <div class="card-header bg-info text-white"><?= t('recent_syllabuses') ?></div>
           <div class="card-body">
             <?php if (empty($existingSyllabuses)): ?>
-              <p class="text-muted"><?= $t['no_syllabuses'] ?></p>
+              <p class="text-muted"><?= t('no_syllabuses') ?></p>
             <?php else: ?>
               <div class="list-group list-group-flush">
                 <?php foreach ($existingSyllabuses as $syl): ?>
@@ -1394,17 +1455,17 @@ table thead th a:hover { text-decoration: underline; }
         </div>
       </div>
     </div>
+    </div>
   </div>
   
   <div id="section-validation" class="ai-section <?= $section === 'validation' ? 'active' : '' ?>">
     <div class="table-container">
-      <h3 class="h5 mb-3"><?= $t['validation'] ?></h3>
-      <p class="text-muted small mb-3"><?= $t['validation_desc'] ?></p>
+      <h3 class="h5 mb-3"><?= t('validation') ?></h3>
+      <p class="text-muted small mb-3"><?= t('validation_desc') ?></p>
       <?php if ($importId !== null): ?>
         <?php
         $page = isset($_GET['validation_page']) ? max(1, (int)$_GET['validation_page']) : 1;
-        $perPage = 50;
-        $offset = ($page - 1) * $perPage;
+        $perPage = PER_PAGE;
 
         $sortColumn = $_GET['validation_sort'] ?? null;
         $sortDirection = $_GET['validation_dir'] ?? null;
@@ -1451,15 +1512,15 @@ table thead th a:hover { text-decoration: underline; }
         <div class="table-responsive">
           <table class="table table-hover">
             <thead><tr>
-              <th><a href="?section=validation&validation_sort=question_id&validation_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_id'] ?> <?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=validation&validation_sort=syllabus_title&validation_dir=<?= ($sortColumn === 'syllabus_title' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_topic'] ?> <?= ($sortColumn === 'syllabus_title') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=validation&validation_sort=avg_score&validation_dir=<?= ($sortColumn === 'avg_score' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_avg_score'] ?> <?= ($sortColumn === 'avg_score') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=validation&validation_sort=attempts&validation_dir=<?= ($sortColumn === 'attempts' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_attempts'] ?> <?= ($sortColumn === 'attempts') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=validation&validation_sort=status&validation_dir=<?= ($sortColumn === 'status' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_status'] ?> <?= ($sortColumn === 'status') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><?= $t['th_issues'] ?></th>
+              <th><a href="?section=validation&validation_sort=question_id&validation_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_id') ?> <span class="sort-icon <?= ($sortColumn === 'question_id') ? 'active' : '' ?>"><?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=validation&validation_sort=syllabus_title&validation_dir=<?= ($sortColumn === 'syllabus_title' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_topic') ?> <span class="sort-icon <?= ($sortColumn === 'syllabus_title') ? 'active' : '' ?>"><?= ($sortColumn === 'syllabus_title') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=validation&validation_sort=avg_score&validation_dir=<?= ($sortColumn === 'avg_score' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_avg_score') ?> <span class="sort-icon <?= ($sortColumn === 'avg_score') ? 'active' : '' ?>"><?= ($sortColumn === 'avg_score') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=validation&validation_sort=attempts&validation_dir=<?= ($sortColumn === 'attempts' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_attempts') ?> <span class="sort-icon <?= ($sortColumn === 'attempts') ? 'active' : '' ?>"><?= ($sortColumn === 'attempts') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=validation&validation_sort=status&validation_dir=<?= ($sortColumn === 'status' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_status') ?> <span class="sort-icon <?= ($sortColumn === 'status') ? 'active' : '' ?>"><?= ($sortColumn === 'status') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><?= t('th_issues') ?></th>
             </tr></thead>
             <tbody>
-              <?php if (empty($pagedData)): echo '<tr><td colspan="6" class="text-muted">' . $t['no_data'] . '</td></tr>';
+              <?php if (empty($pagedData)): echo '<tr><td colspan="6" class="text-muted">' . t('no_data') . '</td></tr>';
               else:
                 foreach ($pagedData as $row):
               ?>
@@ -1475,49 +1536,26 @@ table thead th a:hover { text-decoration: underline; }
             </tbody>
           </table>
         </div>
-        <?php if ($totalPages > 1): ?>
-        <div class="pagination">
-          <?php if ($page > 1): ?>
-            <a href="?section=validation&validation_page=<?= $page - 1 ?>&validation_sort=<?= $sortColumn ?>&validation_dir=<?= $sortDirection ?>"><button>&laquo;</button></a>
-          <?php else: ?>
-            <button disabled>&laquo;</button>
-          <?php endif; ?>
-
-          <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-            <?php if ($i == $page): ?>
-              <button class="active"><?= $i ?></button>
-            <?php elseif (abs($i - $page) <= 2 || $i == 1 || $i == $totalPages): ?>
-              <a href="?section=validation&validation_page=<?= $i ?>&validation_sort=<?= $sortColumn ?>&validation_dir=<?= $sortDirection ?>"><button><?= $i ?></button></a>
-            <?php elseif (abs($i - $page) == 3): ?>
-              <button disabled>...</button>
-            <?php endif; ?>
-          <?php endfor; ?>
-
-          <?php if ($page < $totalPages): ?>
-            <a href="?section=validation&validation_page=<?= $page + 1 ?>&validation_sort=<?= $sortColumn ?>&validation_dir=<?= $sortDirection ?>"><button>&raquo;</button></a>
-          <?php else: ?>
-            <button disabled>&raquo;</button>
-          <?php endif; ?>
-        </div>
-        <p class="text-center text-muted small">Страница <?= $page ?> из <?= $totalPages ?> (<?= $totalItems ?> записей)</p>
-        <?php endif; ?>
+        <?= renderPagination('validation', 'validation_page', $page, $totalPages, $sortColumn, $sortDirection, $totalItems) ?>
       <?php else: ?>
-        <p class="text-muted"><?= $t['select_import'] ?></p>
+        <p class="text-muted"><?= t('select_import') ?></p>
       <?php endif; ?>
     </div>
   </div>
 
   <div id="section-quality" class="ai-section <?= $section === 'quality' ? 'active' : '' ?>">
     <div class="table-container">
-      <h3 class="h5 mb-3"><?= $t['quality'] ?></h3>
-      <p class="text-muted small mb-3"><?= $t['quality_desc'] ?></p>
+      <h3 class="h5 mb-3"><?= t('quality') ?></h3>
+      <p class="text-muted small mb-3"><?= t('quality_desc') ?></p>
 
       <?php if ($importId !== null): ?>
         <?php
         $reliabilityMetrics = ['cronbach_alpha' => 0, 'avg_inter_item_correlation' => 0, 'question_count' => 0, 'interpretation' => 'Нет данных'];
         try {
             $reliabilityMetrics = $ai->getExamReliabilityMetrics();
-        } catch (Throwable $e) {}
+        } catch (Throwable $e) {
+    error_log("Error: " . $e->getMessage());
+}
         ?>
         <?php if ($reliabilityMetrics['question_count'] >= 2): ?>
           <div class="card mb-4 border-primary">
@@ -1551,15 +1589,12 @@ table thead th a:hover { text-decoration: underline; }
           </div>
         <?php endif; ?>
         <?php
-        logPerformance('Quality section start');
         $page = isset($_GET['quality_page']) ? max(1, (int)$_GET['quality_page']) : 1;
-        $perPage = 50;
-        $offset = ($page - 1) * $perPage;
+        $perPage = PER_PAGE;
 
         $sortColumn = $_GET['quality_sort'] ?? null;
         $sortDirection = $_GET['quality_dir'] ?? null;
 
-        logPerformance('Before getQuestionQualityMetrics');
         $disciplineMap = [];
         try {
             $stmtDisc = $pdo->query("
@@ -1569,16 +1604,18 @@ table thead th a:hover { text-decoration: underline; }
             while ($row = $stmtDisc->fetch()) {
                 $disciplineMap[$row['question_id']] = $row['discipline_name'];
             }
-        } catch (Throwable $e) {}
+        } catch (Throwable $e) {
+    error_log("Error: " . $e->getMessage());
+}
 
         $metrics = $ai->getQuestionQualityMetrics($sortColumn, $sortDirection);
-        logPerformance('After getQuestionQualityMetrics');
 
         $disc = [];
         try {
             $disc = $ai->getDiscriminationIndex();
-        } catch (Throwable $e) {}
-        logPerformance('After getDiscriminationIndex');
+        } catch (Throwable $e) {
+    error_log("Error: " . $e->getMessage());
+}
 
         $dmap = [];
         foreach ($disc as $d) { $dmap[(int)$d['question_id']] = $d; }
@@ -1635,18 +1672,18 @@ table thead th a:hover { text-decoration: underline; }
         <div class="table-responsive">
           <table class="table table-hover">
             <thead><tr>
-              <th><a href="?section=quality&quality_sort=question_id&quality_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_id'] ?> <?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=quality&quality_sort=discipline&quality_dir=<?= ($sortColumn === 'discipline' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Discipline <?= ($sortColumn === 'discipline') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=quality&quality_sort=n&quality_dir=<?= ($sortColumn === 'n' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_n'] ?> <?= ($sortColumn === 'n') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=quality&quality_sort=mean_score&quality_dir=<?= ($sortColumn === 'mean_score' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_avg'] ?> <?= ($sortColumn === 'mean_score') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=quality&quality_sort=p_correct_proxy&quality_dir=<?= ($sortColumn === 'p_correct_proxy' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_success_pct'] ?> <?= ($sortColumn === 'p_correct_proxy') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=quality&quality_sort=difficulty_pct&quality_dir=<?= ($sortColumn === 'difficulty_pct' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_difficulty_pct'] ?> <?= ($sortColumn === 'difficulty_pct') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=quality&quality_sort=flag_text&quality_dir=<?= ($sortColumn === 'flag_text' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_flag'] ?> <?= ($sortColumn === 'flag_text') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=quality&quality_sort=discrimination&quality_dir=<?= ($sortColumn === 'discrimination' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_discrimination'] ?> <?= ($sortColumn === 'discrimination') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=quality&quality_sort=reason&quality_dir=<?= ($sortColumn === 'reason' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_reason'] ?> <?= ($sortColumn === 'reason') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=quality&quality_sort=question_id&quality_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_id') ?> <span class="sort-icon <?= ($sortColumn === 'question_id') ? 'active' : '' ?>"><?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=quality&quality_sort=discipline&quality_dir=<?= ($sortColumn === 'discipline' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Discipline <span class="sort-icon <?= ($sortColumn === 'discipline') ? 'active' : '' ?>"><?= ($sortColumn === 'discipline') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=quality&quality_sort=n&quality_dir=<?= ($sortColumn === 'n' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_n') ?> <span class="sort-icon <?= ($sortColumn === 'n') ? 'active' : '' ?>"><?= ($sortColumn === 'n') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=quality&quality_sort=mean_score&quality_dir=<?= ($sortColumn === 'mean_score' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_avg') ?> <span class="sort-icon <?= ($sortColumn === 'mean_score') ? 'active' : '' ?>"><?= ($sortColumn === 'mean_score') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=quality&quality_sort=p_correct_proxy&quality_dir=<?= ($sortColumn === 'p_correct_proxy' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_success_pct') ?> <span class="sort-icon <?= ($sortColumn === 'p_correct_proxy') ? 'active' : '' ?>"><?= ($sortColumn === 'p_correct_proxy') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=quality&quality_sort=difficulty_pct&quality_dir=<?= ($sortColumn === 'difficulty_pct' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_difficulty_pct') ?> <span class="sort-icon <?= ($sortColumn === 'difficulty_pct') ? 'active' : '' ?>"><?= ($sortColumn === 'difficulty_pct') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=quality&quality_sort=flag_text&quality_dir=<?= ($sortColumn === 'flag_text' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_flag') ?> <span class="sort-icon <?= ($sortColumn === 'flag_text') ? 'active' : '' ?>"><?= ($sortColumn === 'flag_text') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=quality&quality_sort=discrimination&quality_dir=<?= ($sortColumn === 'discrimination' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_discrimination') ?> <span class="sort-icon <?= ($sortColumn === 'discrimination') ? 'active' : '' ?>"><?= ($sortColumn === 'discrimination') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=quality&quality_sort=reason&quality_dir=<?= ($sortColumn === 'reason' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_reason') ?> <span class="sort-icon <?= ($sortColumn === 'reason') ? 'active' : '' ?>"><?= ($sortColumn === 'reason') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
             </tr></thead>
             <tbody>
-              <?php if (empty($pagedData)): echo '<tr><td colspan="9" class="text-muted">' . $t['no_data'] . '</td></tr>';
+              <?php if (empty($pagedData)): echo '<tr><td colspan="9" class="text-muted">' . t('no_data') . '</td></tr>';
               else:
                 foreach ($pagedData as $row):
                   $discData = $dmap[$row['question_id']] ?? null;
@@ -1666,46 +1703,21 @@ table thead th a:hover { text-decoration: underline; }
             </tbody>
           </table>
         </div>
-        <?php if ($totalPages > 1): ?>
-        <div class="pagination">
-          <?php if ($page > 1): ?>
-            <a href="?section=quality&quality_page=<?= $page - 1 ?>"><button>&laquo;</button></a>
-          <?php else: ?>
-            <button disabled>&laquo;</button>
-          <?php endif; ?>
-
-          <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-            <?php if ($i == $page): ?>
-              <button class="active"><?= $i ?></button>
-            <?php elseif (abs($i - $page) <= 2 || $i == 1 || $i == $totalPages): ?>
-              <a href="?section=quality&quality_page=<?= $i ?>&quality_sort=<?= $sortColumn ?>&quality_dir=<?= $sortDirection ?>"><button><?= $i ?></button></a>
-            <?php elseif (abs($i - $page) == 3): ?>
-              <button disabled>...</button>
-            <?php endif; ?>
-          <?php endfor; ?>
-
-          <?php if ($page < $totalPages): ?>
-            <a href="?section=quality&quality_page=<?= $page + 1 ?>&quality_sort=<?= $sortColumn ?>&quality_dir=<?= $sortDirection ?>"><button>&raquo;</button></a>
-          <?php else: ?>
-            <button disabled>&raquo;</button>
-          <?php endif; ?>
-        </div>
-        <p class="text-center text-muted small">Страница <?= $page ?> из <?= $totalPages ?> (<?= $totalItems ?> записей)</p>
-        <?php endif; ?>
+        <?= renderPagination('quality', 'quality_page', $page, $totalPages, $sortColumn, $sortDirection, $totalItems) ?>
       <?php else: ?>
-        <p class="text-muted"><?= $t['select_import'] ?></p>
+        <p class="text-muted"><?= t('select_import') ?></p>
       <?php endif; ?>
     </div>
   </div>
 
   <div id="section-correlation" class="ai-section <?= $section === 'correlation' ? 'active' : '' ?>">
     <div class="table-container">
-      <h3 class="h5 mb-3"><?= $t['correlation'] ?></h3>
-      <p class="text-muted small mb-3"><?= $t['correlation_desc'] ?></p>
+      <h3 class="h5 mb-3"><?= t('correlation') ?></h3>
+      <p class="text-muted small mb-3"><?= t('correlation_desc') ?></p>
       <?php if ($importId !== null): ?>
         <?php
         $page = isset($_GET['correlation_page']) ? max(1, (int)$_GET['correlation_page']) : 1;
-        $perPage = 50;
+        $perPage = PER_PAGE;
         $offset = ($page - 1) * $perPage;
 
         $sortColumn = $_GET['correlation_sort'] ?? null;
@@ -1744,12 +1756,12 @@ table thead th a:hover { text-decoration: underline; }
         <div class="table-responsive">
           <table class="table table-hover">
             <thead><tr>
-              <th><a href="?section=correlation&correlation_sort=question_id&correlation_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_id'] ?> <?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=correlation&correlation_sort=r&correlation_dir=<?= ($sortColumn === 'r' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_coefficient'] ?> <?= ($sortColumn === 'r') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=correlation&correlation_sort=flag&correlation_dir=<?= ($sortColumn === 'flag' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_flag'] ?> <?= ($sortColumn === 'flag') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=correlation&correlation_sort=question_id&correlation_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_id') ?> <span class="sort-icon <?= ($sortColumn === 'question_id') ? 'active' : '' ?>"><?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=correlation&correlation_sort=r&correlation_dir=<?= ($sortColumn === 'r' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_coefficient') ?> <span class="sort-icon <?= ($sortColumn === 'r') ? 'active' : '' ?>"><?= ($sortColumn === 'r') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=correlation&correlation_sort=flag&correlation_dir=<?= ($sortColumn === 'flag' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_flag') ?> <span class="sort-icon <?= ($sortColumn === 'flag') ? 'active' : '' ?>"><?= ($sortColumn === 'flag') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
             </tr></thead>
             <tbody>
-              <?php if (empty($pagedData)): echo '<tr><td colspan="3" class="text-muted">' . $t['no_data'] . '</td></tr>';
+              <?php if (empty($pagedData)): echo '<tr><td colspan="3" class="text-muted">' . t('no_data') . '</td></tr>';
               else:
                 foreach ($pagedData as $row):
               ?>
@@ -1762,46 +1774,21 @@ table thead th a:hover { text-decoration: underline; }
             </tbody>
           </table>
         </div>
-        <?php if ($totalPages > 1): ?>
-        <div class="pagination">
-          <?php if ($page > 1): ?>
-            <a href="?section=correlation&correlation_page=<?= $page - 1 ?>&correlation_sort=<?= $sortColumn ?>&correlation_dir=<?= $sortDirection ?>"><button>&laquo;</button></a>
-          <?php else: ?>
-            <button disabled>&laquo;</button>
-          <?php endif; ?>
-
-          <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-            <?php if ($i == $page): ?>
-              <button class="active"><?= $i ?></button>
-            <?php elseif (abs($i - $page) <= 2 || $i == 1 || $i == $totalPages): ?>
-              <a href="?section=correlation&correlation_page=<?= $i ?>&correlation_sort=<?= $sortColumn ?>&correlation_dir=<?= $sortDirection ?>"><button><?= $i ?></button></a>
-            <?php elseif (abs($i - $page) == 3): ?>
-              <button disabled>...</button>
-            <?php endif; ?>
-          <?php endfor; ?>
-
-          <?php if ($page < $totalPages): ?>
-            <a href="?section=correlation&correlation_page=<?= $page + 1 ?>&correlation_sort=<?= $sortColumn ?>&correlation_dir=<?= $sortDirection ?>"><button>&raquo;</button></a>
-          <?php else: ?>
-            <button disabled>&raquo;</button>
-          <?php endif; ?>
-        </div>
-        <p class="text-center text-muted small">Страница <?= $page ?> из <?= $totalPages ?> (<?= $totalItems ?> записей)</p>
-        <?php endif; ?>
+        <?= renderPagination('correlation', 'correlation_page', $page, $totalPages, $sortColumn, $sortDirection, $totalItems) ?>
       <?php else: ?>
-        <p class="text-muted"><?= $t['select_import'] ?></p>
+        <p class="text-muted"><?= t('select_import') ?></p>
       <?php endif; ?>
     </div>
   </div>
 
   <div id="section-students" class="ai-section <?= $section === 'students' ? 'active' : '' ?>">
     <div class="table-container">
-      <h3 class="h5 mb-3"><?= $t['students'] ?></h3>
-      <p class="text-muted small mb-3"><?= $t['students_desc'] ?></p>
+      <h3 class="h5 mb-3"><?= t('students') ?></h3>
+      <p class="text-muted small mb-3"><?= t('students_desc') ?></p>
       <?php if ($importId !== null): ?>
         <?php
         $page = isset($_GET['students_page']) ? max(1, (int)$_GET['students_page']) : 1;
-        $perPage = 50;
+        $perPage = PER_PAGE;
 
         $sortColumn = $_GET['students_sort'] ?? null;
         $sortDirection = $_GET['students_dir'] ?? null;
@@ -1830,15 +1817,15 @@ table thead th a:hover { text-decoration: underline; }
         <div class="table-responsive">
           <table class="table table-hover">
             <thead><tr>
-              <th><a href="?section=students&students_sort=student_id&students_dir=<?= ($sortColumn === 'student_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_id'] ?> <?= ($sortColumn === 'student_id') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=students&students_sort=avg_item&students_dir=<?= ($sortColumn === 'avg_item' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_avg'] ?> <?= ($sortColumn === 'avg_item') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=students&students_sort=min_item&students_dir=<?= ($sortColumn === 'min_item' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_min'] ?> <?= ($sortColumn === 'min_item') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=students&students_sort=discipline_total&students_dir=<?= ($sortColumn === 'discipline_total' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_total'] ?> <?= ($sortColumn === 'discipline_total') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=students&students_sort=pattern_type&students_dir=<?= ($sortColumn === 'pattern_type' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_type'] ?> <?= ($sortColumn === 'pattern_type') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=students&students_sort=notes&students_dir=<?= ($sortColumn === 'notes' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_notes'] ?> <?= ($sortColumn === 'notes') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=students&students_sort=student_id&students_dir=<?= ($sortColumn === 'student_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_id') ?> <span class="sort-icon <?= ($sortColumn === 'student_id') ? 'active' : '' ?>"><?= ($sortColumn === 'student_id') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=students&students_sort=avg_item&students_dir=<?= ($sortColumn === 'avg_item' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_avg') ?> <span class="sort-icon <?= ($sortColumn === 'avg_item') ? 'active' : '' ?>"><?= ($sortColumn === 'avg_item') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=students&students_sort=min_item&students_dir=<?= ($sortColumn === 'min_item' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_min') ?> <span class="sort-icon <?= ($sortColumn === 'min_item') ? 'active' : '' ?>"><?= ($sortColumn === 'min_item') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=students&students_sort=discipline_total&students_dir=<?= ($sortColumn === 'discipline_total' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_total') ?> <span class="sort-icon <?= ($sortColumn === 'discipline_total') ? 'active' : '' ?>"><?= ($sortColumn === 'discipline_total') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=students&students_sort=pattern_type&students_dir=<?= ($sortColumn === 'pattern_type' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_type') ?> <span class="sort-icon <?= ($sortColumn === 'pattern_type') ? 'active' : '' ?>"><?= ($sortColumn === 'pattern_type') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=students&students_sort=notes&students_dir=<?= ($sortColumn === 'notes' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_notes') ?> <span class="sort-icon <?= ($sortColumn === 'notes') ? 'active' : '' ?>"><?= ($sortColumn === 'notes') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
             </tr></thead>
             <tbody>
-              <?php if (empty($studentsData)): echo '<tr><td colspan="6" class="text-muted">' . $t['no_data'] . '</td></tr>';
+              <?php if (empty($studentsData)): echo '<tr><td colspan="6" class="text-muted">' . t('no_data') . '</td></tr>';
               else:
                 foreach ($studentsData as $row):
               ?>
@@ -1854,34 +1841,9 @@ table thead th a:hover { text-decoration: underline; }
             </tbody>
           </table>
         </div>
-        <?php if ($totalPages > 1): ?>
-        <div class="pagination">
-          <?php if ($page > 1): ?>
-            <a href="?section=students&students_page=<?= $page - 1 ?>&students_sort=<?= $sortColumn ?>&students_dir=<?= $sortDirection ?>"><button>&laquo;</button></a>
-          <?php else: ?>
-            <button disabled>&laquo;</button>
-          <?php endif; ?>
-
-          <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-            <?php if ($i == $page): ?>
-              <button class="active"><?= $i ?></button>
-            <?php elseif (abs($i - $page) <= 2 || $i == 1 || $i == $totalPages): ?>
-              <a href="?section=students&students_page=<?= $i ?>&students_sort=<?= $sortColumn ?>&students_dir=<?= $sortDirection ?>"><button><?= $i ?></button></a>
-            <?php elseif (abs($i - $page) == 3): ?>
-              <button disabled>...</button>
-            <?php endif; ?>
-          <?php endfor; ?>
-
-          <?php if ($page < $totalPages): ?>
-            <a href="?section=students&students_page=<?= $page + 1 ?>&students_sort=<?= $sortColumn ?>&students_dir=<?= $sortDirection ?>"><button>&raquo;</button></a>
-          <?php else: ?>
-            <button disabled>&raquo;</button>
-          <?php endif; ?>
-        </div>
-        <p class="text-center text-muted small">Страница <?= $page ?> из <?= $totalPages ?> (<?= $totalItems ?> записей)</p>
-        <?php endif; ?>
+        <?= renderPagination('students', 'students_page', $page, $totalPages, $sortColumn, $sortDirection, $totalItems) ?>
       <?php else: ?>
-        <p class="text-muted"><?= $t['select_import'] ?></p>
+        <p class="text-muted"><?= t('select_import') ?></p>
       <?php endif; ?>
     </div>
   </div>
@@ -1892,7 +1854,7 @@ table thead th a:hover { text-decoration: underline; }
       <?php if ($importId !== null): ?>
         <?php
         $page = isset($_GET['semantic_page']) ? max(1, (int)$_GET['semantic_page']) : 1;
-        $perPage = 50;
+        $perPage = PER_PAGE;
         $offset = ($page - 1) * $perPage;
 
         $sortColumn = $_GET['semantic_sort'] ?? null;
@@ -1936,14 +1898,14 @@ table thead th a:hover { text-decoration: underline; }
         <div class="table-responsive">
           <table class="table table-hover">
             <thead><tr>
-              <th><a href="?section=semantic&semantic_sort=question_id&semantic_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">ID <?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=semantic&semantic_sort=syllabus_title&semantic_dir=<?= ($sortColumn === 'syllabus_title' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Тема <?= ($sortColumn === 'syllabus_title') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=semantic&semantic_sort=discipline_name&semantic_dir=<?= ($sortColumn === 'discipline_name' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Дисциплина <?= ($sortColumn === 'discipline_name') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=semantic&semantic_sort=average_score&semantic_dir=<?= ($sortColumn === 'average_score' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Средний балл <?= ($sortColumn === 'average_score') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
-              <th><a href="?section=semantic&semantic_sort=alignment_level&semantic_dir=<?= ($sortColumn === 'alignment_level' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Статус <?= ($sortColumn === 'alignment_level') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=semantic&semantic_sort=question_id&semantic_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">ID <span class="sort-icon <?= ($sortColumn === 'question_id') ? 'active' : '' ?>"><?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=semantic&semantic_sort=syllabus_title&semantic_dir=<?= ($sortColumn === 'syllabus_title' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Тема <span class="sort-icon <?= ($sortColumn === 'syllabus_title') ? 'active' : '' ?>"><?= ($sortColumn === 'syllabus_title') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=semantic&semantic_sort=discipline_name&semantic_dir=<?= ($sortColumn === 'discipline_name' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Дисциплина <span class="sort-icon <?= ($sortColumn === 'discipline_name') ? 'active' : '' ?>"><?= ($sortColumn === 'discipline_name') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=semantic&semantic_sort=average_score&semantic_dir=<?= ($sortColumn === 'average_score' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Средний балл <span class="sort-icon <?= ($sortColumn === 'average_score') ? 'active' : '' ?>"><?= ($sortColumn === 'average_score') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th><a href="?section=semantic&semantic_sort=alignment_level&semantic_dir=<?= ($sortColumn === 'alignment_level' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Статус <span class="sort-icon <?= ($sortColumn === 'alignment_level') ? 'active' : '' ?>"><?= ($sortColumn === 'alignment_level') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
             </tr></thead>
             <tbody>
-              <?php if (empty($pagedData)): echo '<tr><td colspan="5" class="text-muted">' . $t['no_data'] . '</td></tr>';
+              <?php if (empty($pagedData)): echo '<tr><td colspan="5" class="text-muted">' . t('no_data') . '</td></tr>';
               else:
                 foreach ($pagedData as $row):
               ?>
@@ -1958,59 +1920,35 @@ table thead th a:hover { text-decoration: underline; }
             </tbody>
           </table>
         </div>
-        <?php if ($totalPages > 1): ?>
-        <div class="pagination">
-          <?php if ($page > 1): ?>
-            <a href="?section=semantic&semantic_page=<?= $page - 1 ?>&semantic_sort=<?= $sortColumn ?>&semantic_dir=<?= $sortDirection ?>"><button>&laquo;</button></a>
-          <?php else: ?>
-            <button disabled>&laquo;</button>
-          <?php endif; ?>
-
-          <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-            <?php if ($i == $page): ?>
-              <button class="active"><?= $i ?></button>
-            <?php elseif (abs($i - $page) <= 2 || $i == 1 || $i == $totalPages): ?>
-              <a href="?section=semantic&semantic_page=<?= $i ?>&semantic_sort=<?= $sortColumn ?>&semantic_dir=<?= $sortDirection ?>"><button><?= $i ?></button></a>
-            <?php elseif (abs($i - $page) == 3): ?>
-              <button disabled>...</button>
-            <?php endif; ?>
-          <?php endfor; ?>
-
-          <?php if ($page < $totalPages): ?>
-            <a href="?section=semantic&semantic_page=<?= $page + 1 ?>&semantic_sort=<?= $sortColumn ?>&semantic_dir=<?= $sortDirection ?>"><button>&raquo;</button></a>
-          <?php else: ?>
-            <button disabled>&raquo;</button>
-          <?php endif; ?>
-        </div>
-        <p class="text-center text-muted small">Страница <?= $page ?> из <?= $totalPages ?> (<?= $totalItems ?> записей)</p>
-        <?php endif; ?>
+        <?= renderPagination('semantic', 'semantic_page', $page, $totalPages, $sortColumn, $sortDirection, $totalItems) ?>
       <?php else: ?>
-        <p class="text-muted"><?= $t['select_import'] ?></p>
+        <p class="text-muted"><?= t('select_import') ?></p>
+
       <?php endif; ?>
     </div>
   </div>
 
   <div id="section-rules" class="ai-section <?= $section === 'rules' ? 'active' : '' ?>">
     <div class="table-container">
-      <h3 class="h5 mb-3">Конструктор правил</h3>
+      <h3 class="h5 mb-3"><?= t('rules_constructor') ?></h3>
       
       <div class="row mb-4">
         <div class="col-md-6">
-          <h6 class="fw-semibold mb-3">Активные правила</h6>
+          <h6 class="fw-semibold mb-3"><?= t('active_rules') ?></h6>
           <?php
           $activeRules = $rules->getActiveClassificationRules();
           if (empty($activeRules)):
           ?>
-            <div class="alert alert-info">Правила не настроены</div>
+            <div class="alert alert-info"><?= t('no_rules_configured') ?></div>
           <?php else: ?>
             <div class="list-group">
               <?php foreach ($activeRules as $rule): ?>
                 <div class="list-group-item">
                   <div class="d-flex w-100 justify-content-between">
                     <h6 class="mb-1"><?= h($rule['rule_name']) ?></h6>
-                    <span class="badge bg-success">Активно</span>
+                    <span class="badge bg-success"><?= t('active') ?></span>
                   </div>
-                  <small class="text-muted">Порядок: <?= (int)$rule['rule_order'] ?></small>
+                  <small class="text-muted"><?= t('order') ?>: <?= (int)$rule['rule_order'] ?></small>
                 </div>
               <?php endforeach; ?>
             </div>
@@ -2018,58 +1956,58 @@ table thead th a:hover { text-decoration: underline; }
         </div>
         
         <div class="col-md-6">
-          <h6 class="fw-semibold mb-3">Создать новое правило</h6>
+          <h6 class="fw-semibold mb-3"><?= t('create_new_rule') ?></h6>
           <form method="post" class="mb-3">
             <?= csrf_input() ?>
             <div class="mb-3">
-              <label class="form-label">Название правила</label>
-              <input type="text" name="rule_name" class="form-control" required placeholder="Например: Слишком сложные вопросы">
+              <label class="form-label"><?= t('rule_name') ?></label>
+              <input type="text" name="rule_name" class="form-control" required placeholder="<?= t('rule_name_placeholder') ?>">
             </div>
             <div class="mb-3">
-              <label class="form-label">Метрика</label>
+              <label class="form-label"><?= t('metric') ?></label>
               <select name="metric_name" class="form-select">
-                <option value="difficulty_index">Индекс сложности</option>
-                <option value="discrimination_index">Индекс дискриминативности</option>
-                <option value="avg_score">Средний балл</option>
-                <option value="total_attempts">Количество попыток</option>
+                <option value="difficulty_index"><?= t('difficulty_index') ?></option>
+                <option value="discrimination_index"><?= t('discrimination_index') ?></option>
+                <option value="avg_score"><?= t('avg_score') ?></option>
+                <option value="total_attempts"><?= t('total_attempts') ?></option>
               </select>
             </div>
             <div class="mb-3">
-              <label class="form-label">Оператор</label>
+              <label class="form-label"><?= t('operator') ?></label>
               <select name="operator" class="form-select">
-                <option value=">">Больше (&gt;)</option>
-                <option value="<">Меньше (&lt;)</option>
-                <option value=">=">Больше или равно (&gt;=)</option>
-                <option value="<=">Меньше или равно (&lt;=)</option>
-                <option value="between">Между</option>
+                <option value=">"><?= t('greater_than') ?> (&gt;)</option>
+                <option value="<"><?= t('less_than') ?> (&lt;)</option>
+                <option value=">="><?= t('greater_or_equal') ?> (&gt;=)</option>
+                <option value="<="><?= t('less_or_equal') ?> (&lt;=)</option>
+                <option value="between"><?= t('between') ?></option>
               </select>
             </div>
             <div class="mb-3">
-              <label class="form-label">Значение от</label>
+              <label class="form-label"><?= t('value_from') ?></label>
               <input type="number" step="0.01" name="value_from" class="form-control" required>
             </div>
             <div class="mb-3">
-              <label class="form-label">Значение до (для между)</label>
+              <label class="form-label"><?= t('value_to_for_between') ?></label>
               <input type="number" step="0.01" name="value_to" class="form-control">
             </div>
             <div class="mb-3">
-              <label class="form-label">Категория качества</label>
+              <label class="form-label"><?= t('quality_category') ?></label>
               <select name="category" class="form-select">
-                <option value="too_difficult">Слишком сложный</option>
-                <option value="too_easy">Слишком легкий</option>
-                <option value="poor_discrimination">Плохая дискриминативность</option>
-                <option value="insufficient_attempts">Недостаточно попыток</option>
+                <option value="too_difficult"><?= t('too_difficult') ?></option>
+                <option value="too_easy"><?= t('too_easy') ?></option>
+                <option value="poor_discrimination"><?= t('poor_discrimination') ?></option>
+                <option value="insufficient_attempts"><?= t('insufficient_attempts') ?></option>
               </select>
             </div>
             <div class="mb-3">
-              <label class="form-label">Сообщение для пользователя</label>
-              <input type="text" name="action_message" class="form-control" placeholder="Например: Вопрос слишком сложный для студентов">
+              <label class="form-label"><?= t('user_message') ?></label>
+              <input type="text" name="action_message" class="form-control" placeholder="<?= t('user_message_placeholder') ?>">
             </div>
             <div class="mb-3">
-              <label class="form-label">Порядок выполнения</label>
+              <label class="form-label"><?= t('execution_order') ?></label>
               <input type="number" min="1" name="rule_order" class="form-control" value="1">
             </div>
-            <button type="submit" class="btn btn-primary">Создать правило</button>
+            <button type="submit" class="btn btn-primary"><?= t('create_rule') ?></button>
           </form>
         </div>
       </div>
@@ -2078,133 +2016,336 @@ table thead th a:hover { text-decoration: underline; }
 
   <div id="section-settings" class="ai-section <?= $section === 'settings' ? 'active' : '' ?>">
     <div class="table-container">
-      <h3 class="h5 mb-3">Настройки коэффициентов</h3>
+      <h3 class="h5 mb-3"><?= t('settings_coefficients') ?></h3>
       
       <div class="form-grid">
         <div class="form-card">
-          <h6 class="fw-semibold mb-3">Глобальные настройки</h6>
+          <h6 class="fw-semibold mb-3"><?= t('global_settings') ?></h6>
           <form method="post" class="mb-3">
             <?= csrf_input() ?>
             <div class="mb-3">
-              <label class="form-label">Порог сложности (0-1)</label>
+              <label class="form-label"><?= t('difficulty_threshold') ?></label>
               <input type="number" step="0.01" min="0" max="1" name="difficulty_threshold" class="form-control" value="0.5">
-              <small class="text-muted">Вопросы с индексом сложности выше этого порога считаются слишком сложными</small>
+              <small class="text-muted"><?= t('difficulty_threshold_desc') ?></small>
             </div>
             <div class="mb-3">
-              <label class="form-label">Порог дискриминативности (0-1)</label>
+              <label class="form-label"><?= t('discrimination_threshold') ?></label>
               <input type="number" step="0.01" min="0" max="1" name="discrimination_threshold" class="form-control" value="0.3">
-              <small class="text-muted">Вопросы с дискриминативностью ниже этого порога считаются некачественными</small>
+              <small class="text-muted"><?= t('discrimination_threshold_desc') ?></small>
             </div>
             <div class="mb-3">
-              <label class="form-label">Минимальное количество попыток</label>
+              <label class="form-label"><?= t('min_attempts') ?></label>
               <input type="number" min="1" name="min_attempts" class="form-control" value="5">
-              <small class="text-muted">Минимальное количество ответов для анализа качества вопроса</small>
+              <small class="text-muted"><?= t('min_attempts_desc') ?></small>
             </div>
             <div class="mb-3">
-              <label class="form-label">Минимальное количество студентов для дискриминации</label>
+              <label class="form-label"><?= t('min_students_discrimination') ?></label>
               <input type="number" min="2" name="min_students_discrimination" class="form-control" value="<?= $minStudentsDiscrimination ?>">
-              <small class="text-muted">Минимальное количество студентов для расчёта дискриминационного индекса (корреляция Пирсона)</small>
+              <small class="text-muted"><?= t('min_students_discrimination_desc') ?></small>
             </div>
             <div class="mb-3">
-              <label class="form-label">Порог дедупликации (0-1)</label>
-              <input type="number" step="0.01" min="0" max="1" name="dedup_threshold" class="form-control" value="0.85">
-              <small class="text-muted">Порог сходства для определения дубликатов вопросов</small>
+              <label class="form-label"><?= t('dedup_threshold') ?></label>
+              <input type="number" step="0.01" min="0" max="1" name="dedup_threshold" class="form-control" value="<?= DEFAULT_DEDUP_THRESHOLD ?>">
+              <small class="text-muted"><?= t('dedup_threshold_desc') ?></small>
             </div>
             <div class="mb-3">
-              <label class="form-label">Вес TF-IDF (0-1)</label>
-              <input type="number" step="0.01" min="0" max="1" name="tfidf_weight" class="form-control" value="0.6">
-              <small class="text-muted">Вес TF-IDF в гибридном анализе (остальное - эмбеддинги)</small>
+              <label class="form-label"><?= t('tfidf_weight') ?></label>
+              <input type="number" step="0.01" min="0" max="1" name="tfidf_weight" class="form-control" value="<?= DEFAULT_TFIDF_WEIGHT ?>">
+              <small class="text-muted"><?= t('tfidf_weight_desc') ?></small>
             </div>
-            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <button type="submit" class="btn btn-primary"><?= t('save_settings') ?></button>
           </form>
         </div>
         
         <div class="form-card">
-          <h6 class="fw-semibold mb-3">Настройки по дисциплине</h6>
+          <h6 class="fw-semibold mb-3"><?= t('discipline_settings') ?></h6>
           <form method="post" class="mb-3">
             <?= csrf_input() ?>
             <div class="mb-3">
-              <label class="form-label">Дисциплина</label>
+              <label class="form-label"><?= t('discipline') ?></label>
               <select name="discipline_id" class="form-select">
-                <option value="">Выберите дисциплину</option>
+                <option value=""><?= t('select_discipline') ?></option>
                 <option value="1">Педиатрия</option>
                 <option value="2">Хирургия</option>
                 <option value="3">Терапия</option>
               </select>
             </div>
             <div class="mb-3">
-              <label class="form-label">Коэффициент сложности</label>
+              <label class="form-label"><?= t('difficulty_coeff') ?></label>
               <input type="number" step="0.01" min="0" max="2" name="discipline_difficulty_coeff" class="form-control" value="1.0">
             </div>
             <div class="mb-3">
-              <label class="form-label">Коэффициент важности</label>
+              <label class="form-label"><?= t('importance_coeff') ?></label>
               <input type="number" step="0.01" min="0" max="2" name="discipline_importance_coeff" class="form-control" value="1.0">
             </div>
-            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <button type="submit" class="btn btn-primary"><?= t('save_settings') ?></button>
           </form>
         </div>
         
         <div class="form-card">
-          <h6 class="fw-semibold mb-3">Настройки по специальности</h6>
+          <h6 class="fw-semibold mb-3"><?= t('specialty_settings') ?></h6>
           <form method="post" class="mb-3">
             <?= csrf_input() ?>
             <div class="mb-3">
-              <label class="form-label">Специальность</label>
+              <label class="form-label"><?= t('specialty') ?></label>
               <select name="specialty_id" class="form-select">
-                <option value="">Выберите специальность</option>
+                <option value=""><?= t('select_specialty') ?></option>
                 <option value="1">Лечебное дело</option>
                 <option value="2">Педиатрия</option>
                 <option value="3">Стоматология</option>
               </select>
             </div>
             <div class="mb-3">
-              <label class="form-label">Базовый порог сложности</label>
+              <label class="form-label"><?= t('base_difficulty_threshold') ?></label>
               <input type="number" step="0.01" min="0" max="1" name="specialty_difficulty_threshold" class="form-control" value="0.5">
             </div>
             <div class="mb-3">
-              <label class="form-label">Коэффициент строгости</label>
+              <label class="form-label"><?= t('strictness_coeff') ?></label>
               <input type="number" step="0.01" min="0" max="2" name="specialty_strictness_coeff" class="form-control" value="1.0">
             </div>
-            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <button type="submit" class="btn btn-primary"><?= t('save_settings') ?></button>
           </form>
         </div>
       </div>
     </div>
   </div>
 
-  <div id="section-containers" class="ai-section <?= $section === 'containers' ? 'active' : '' ?>">
-    <div class="table-container">
-      <h3 class="h5 mb-3">Container Management</h3>
-      <p class="text-muted">Управление контейнерами</p>
-    </div>
-  </div>
-  
 </div>
 
-<script src="assets/vendor/js/bootstrap.bundle.min.js"></script>
 <script>
-function showSection(sectionId) {
-  document.querySelectorAll('.ai-section').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.ai-nav-btn').forEach(el => el.classList.remove('active'));
-  document.getElementById('section-' + sectionId).classList.add('active');
-  event.target.classList.add('active');
-  window.location.hash = sectionId;
-}
+let chartData = null;
 
+fetch('chart_data.php')
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            console.error('Error loading chart data:', data.error);
+            return;
+        }
+        chartData = data;
+        initializeCharts();
+    })
+    .catch(error => {
+        console.error('Error fetching chart data:', error);
+    });
+
+function initializeCharts() {
+    if (!chartData) return;
+    
+    if (typeof Chart === 'undefined') {
+        console.error('Chart.js is not loaded!');
+        return;
+    }
+    
+    const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: true,
+                position: 'bottom',
+                labels: {
+                    font: { size: 12 },
+                    color: '#64748b',
+                    padding: 15,
+                    usePointStyle: true
+                }
+            },
+            tooltip: {
+                enabled: true,
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                titleFont: { size: 13 },
+                bodyFont: { size: 12 },
+                padding: 10,
+                cornerRadius: 6
+            }
+        }
+    };
+
+    const barOptions = {
+        ...commonOptions,
+        scales: {
+            x: {
+                grid: {
+                    display: false
+                },
+                ticks: {
+                    font: { size: 11 },
+                    color: '#64748b'
+                }
+            },
+            y: {
+                grid: {
+                    color: '#e2e8f0',
+                    drawBorder: false
+                },
+                ticks: {
+                    font: { size: 11 },
+                    color: '#64748b'
+                },
+                beginAtZero: true
+            }
+        }
+    };
+
+    const qualityCtx = document.getElementById('qualityChart');
+    if (qualityCtx && chartData.quality) {
+        try {
+            new Chart(qualityCtx, {
+                type: 'pie',
+                data: {
+                    labels: chartData.quality.labels,
+                    datasets: [{
+                        data: chartData.quality.data,
+                        backgroundColor: chartData.quality.backgroundColors,
+                        borderColor: chartData.quality.colors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    plugins: {
+                        ...commonOptions.plugins,
+                        legend: {
+                            ...commonOptions.plugins.legend,
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error creating quality chart:', error);
+        }
+    }
+
+    const correlationCtx = document.getElementById('correlationChart');
+    if (correlationCtx && chartData.correlation) {
+        try {
+            new Chart(correlationCtx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.correlation.labels,
+                    datasets: [{
+                        data: chartData.correlation.data,
+                        backgroundColor: chartData.correlation.backgroundColors,
+                        borderColor: chartData.correlation.colors,
+                        borderWidth: 2,
+                        borderRadius: 6
+                    }]
+                },
+                options: barOptions
+            });
+        } catch (error) {
+            console.error('Error creating correlation chart:', error);
+        }
+    }
+
+    const studentsCtx = document.getElementById('studentsChart');
+    if (studentsCtx && chartData.students) {
+        try {
+            new Chart(studentsCtx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.students.labels,
+                    datasets: [{
+                        data: chartData.students.data,
+                        backgroundColor: chartData.students.backgroundColors,
+                        borderColor: chartData.students.colors,
+                        borderWidth: 2,
+                        borderRadius: 6
+                    }]
+                },
+                options: barOptions
+            });
+        } catch (error) {
+            console.error('Error creating students chart:', error);
+        }
+    }
+
+    const validationCtx = document.getElementById('validationChart');
+    if (validationCtx && chartData.validation) {
+        try {
+            new Chart(validationCtx, {
+                type: 'pie',
+                data: {
+                    labels: chartData.validation.labels,
+                    datasets: [{
+                        data: chartData.validation.data,
+                        backgroundColor: chartData.validation.backgroundColors,
+                        borderColor: chartData.validation.colors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    plugins: {
+                        ...commonOptions.plugins,
+                        legend: {
+                            ...commonOptions.plugins.legend,
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error creating validation chart:', error);
+        }
+    }
+
+    const semanticCtx = document.getElementById('semanticChart');
+    if (semanticCtx && chartData.semantic) {
+        try {
+            new Chart(semanticCtx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.semantic.labels,
+                    datasets: [{
+                        data: chartData.semantic.data,
+                        backgroundColor: chartData.semantic.backgroundColors,
+                        borderColor: chartData.semantic.colors,
+                        borderWidth: 2,
+                        borderRadius: 6
+                    }]
+                },
+                options: barOptions
+            });
+        } catch (error) {
+            console.error('Error creating semantic chart:', error);
+        }
+    }
+}
+</script>
+
+<script src="assets/vendor/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
 document.addEventListener('DOMContentLoaded', function() {
+  window.showSection = function(sectionId, event) {
+    if (event) event.preventDefault();
+    document.querySelectorAll('.ai-section').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.ai-nav-btn').forEach(el => el.classList.remove('active'));
+    const section = document.getElementById('section-' + sectionId);
+    if (section) {
+      section.classList.add('active');
+    }
+    if (event && event.target) {
+      event.target.classList.add('active');
+    }
+    window.location.hash = sectionId;
+  };
+
   document.querySelectorAll('.table tbody').forEach(tbody => {
     tbody.addEventListener('click', function(event) {
       event.stopPropagation();
     });
   });
+
+  if (window.location.hash) {
+    const section = window.location.hash.substring(1);
+    const btn = Array.from(document.querySelectorAll('.ai-nav-btn')).find(b => b.textContent.toLowerCase().includes(section));
+    if (btn) btn.click();
+  }
 });
-
-
-if (window.location.hash) {
-  const section = window.location.hash.substring(1);
-  const btn = Array.from(document.querySelectorAll('.ai-nav-btn')).find(b => b.textContent.toLowerCase().includes(section));
-  if (btn) btn.click();
-}
 </script>
 
 <?php
@@ -2343,8 +2484,9 @@ function parseSyllabusTopics(string $text, string $disciplineName, int $courseNu
         if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $match) {
                 $title = trim($match[2]);
-                if (!in_array($title, $foundTopics) && mb_strlen($title) >= 10) {
-                    $foundTopics[] = $title;
+                $normalizedTitle = mb_strtolower(preg_replace('/\s+/', ' ', $title), 'UTF-8');
+                if (!in_array($normalizedTitle, $foundTopics) && mb_strlen($title) >= 10) {
+                    $foundTopics[$normalizedTitle] = $title;
                 }
             }
         }
@@ -2369,6 +2511,42 @@ function parseSyllabusTopics(string $text, string $disciplineName, int $courseNu
     }
     
     return $topics;
+}
+
+function parseSyllabusQuestions(string $text): array
+{
+    $questions = [];
+    
+    $sectionText = $text;
+    
+    if (preg_match('/Контрольно-измерительные средства.*?(?=\n\s*$|\Z)/s', $text, $match)) {
+        $sectionText = $match[0];
+    }
+    elseif (preg_match('/Приложения.*?(?=\n\s*$|\Z)/s', $text, $match)) {
+        $sectionText = $match[0];
+    }
+    
+    
+    $pattern = '/(\d+)\.\s*(.*?)(?=\n\s*\d+\.\s*|\n\s*$|\Z)/s';
+    
+    if (preg_match_all($pattern, $sectionText, $matches, PREG_SET_ORDER)) {
+        foreach ($matches as $match) {
+            $questionText = trim($match[2]);
+            
+            $questionText = preg_replace('/\s+/', ' ', $questionText);
+            
+            if (mb_strlen($questionText) > 30) {
+                $questions[] = [
+                    'text' => $questionText,
+                    'type' => 'syllabus_question',
+                    'number' => (int)$match[1]
+                ];
+            }
+        }
+    } else {
+    }
+    
+    return $questions;
 }
 
 function readOdsFile(string $filePath): array {
@@ -2508,11 +2686,15 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<?php
-$loadTime = round(microtime(true) - $startTime, 3);
-logPerformance("Page end - Total: {$loadTime}s");
-echo "<!-- Page load time: {$loadTime}s -->";
-echo "<!-- Check performance.log for details -->";
-?>
+<div id="confirmModal" class="confirm-modal">
+  <div class="confirm-modal-content">
+    <div class="confirm-modal-title"><?= t('confirmation') ?></div>
+    <div class="confirm-modal-message" id="confirmModalMessage"></div>
+    <div class="confirm-modal-buttons">
+      <button id="confirmModalCancel" class="confirm-modal-btn confirm-modal-btn-cancel"><?= t('cancel') ?></button>
+      <button id="confirmModalConfirm" class="confirm-modal-btn confirm-modal-btn-confirm"><?= t('confirm') ?></button>
+    </div>
+  </div>
+</div>
 
 <?php render_footer(); ?>

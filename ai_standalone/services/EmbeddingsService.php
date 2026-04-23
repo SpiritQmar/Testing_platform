@@ -15,13 +15,14 @@ final class EmbeddingsService
 
     public function isEmbeddingsServiceAvailable(): bool
     {
-        if (!$this->embeddingsFeatureEnabled) return false;
+        if (!$this->embeddingsFeatureEnabled) {
+            return false;
+        }
 
         try {
             $apiResponse = $this->sendApiRequest('/health');
             return isset($apiResponse['status']) && $apiResponse['status'] === 'healthy';
         } catch (Throwable $exception) {
-            error_log('Сервис эмбеддингов недоступен: ' . $exception->getMessage());
             return false;
         }
     }

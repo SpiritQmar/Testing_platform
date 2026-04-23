@@ -51,14 +51,15 @@ final class TfIdfService
                 if ($semanticAnalysisResult) {
                     $semanticSimilarityScore = $semanticAnalysisResult['similarity'] ?? 0;
                 }
+            } else {
             }
 
             $combinedAlignmentScore = $textSimilarityScore * 0.6 + $semanticSimilarityScore * 0.4;
 
             $alignmentLevel = 'high';
-            if ($combinedAlignmentScore < 0.3) {
+            if ($combinedAlignmentScore < 0.15) {
                 $alignmentLevel = 'low';
-            } elseif ($combinedAlignmentScore < 0.6) {
+            } elseif ($combinedAlignmentScore < 0.4) {
                 $alignmentLevel = 'medium';
             }
 

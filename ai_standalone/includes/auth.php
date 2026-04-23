@@ -96,6 +96,12 @@ function t(string $key): string {
         ],
     ];
     $lang = get_lang();
+    
+    global $translations;
+    if (isset($translations[$key])) {
+        return $translations[$key];
+    }
+    
     try {
         global $pdo;
         if ($pdo) {
