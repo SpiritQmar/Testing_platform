@@ -127,10 +127,19 @@ final class AIAnalyticsService
         return $validationResults;
     }
 
-    public function getQuestionQualityMetrics(): array
+    public function getQuestionQualityMetrics(?string $sortColumn = null, ?string $sortDirection = null): array
     {
         $importIdentifier = $this->currentImportId;
         if ($importIdentifier === null) return [];
+
+        $orderBy = '';
+        if ($sortColumn && $sortDirection) {
+            $validColumns = ['question_id', 'n', 'mean_score', 'std_score', 'p_correct_proxy'];
+            if (in_array($sortColumn, $validColumns)) {
+                $direction = strtoupper($sortDirection) === 'DESC' ? 'DESC' : 'ASC';
+                $orderBy = " ORDER BY $sortColumn $direction";
+            }
+        }
 
         $sqlQuery = "
             SELECT r.question_id, COUNT(*) AS n, AVG(r.received_score) AS mean_score,
@@ -139,6 +148,7 @@ final class AIAnalyticsService
             FROM raw_exam_results r
             WHERE r.import_id = :imp AND r.question_id IS NOT NULL AND r.received_score IS NOT NULL
             GROUP BY r.question_id
+            $orderBy
         ";
         $queryStatement = $this->databaseConnection->prepare($sqlQuery);
         $queryStatement->execute([':imp' => $importIdentifier]);
@@ -182,6 +192,17 @@ final class AIAnalyticsService
                 'reason' => $qualityReason,
             ];
         }
+
+        if ($sortColumn && $sortDirection && $sortColumn === 'difficulty_pct') {
+            $direction = strtoupper($sortDirection) === 'DESC' ? -1 : 1;
+            usort($qualityAnalysisResults, function($a, $b) use ($direction) {
+                $valA = $a['difficulty_pct'];
+                $valB = $b['difficulty_pct'];
+                if ($valA == $valB) return 0;
+                return ($valA < $valB ? -1 : 1) * $direction;
+            });
+        }
+
         return $qualityAnalysisResults;
     }
 
@@ -189,6 +210,11 @@ final class AIAnalyticsService
     {
         $importIdentifier = $this->currentImportId;
         if ($importIdentifier === null) return [];
+
+        $cacheKey = "discrimination_index_{$importIdentifier}";
+        if (isset($_SESSION[$cacheKey])) {
+            return $_SESSION[$cacheKey];
+        }
 
         $questionsQuery = $this->databaseConnection->prepare("
             SELECT DISTINCT question_id
@@ -221,6 +247,7 @@ final class AIAnalyticsService
             ];
         }
 
+        $_SESSION[$cacheKey] = $discriminationResults;
         return $discriminationResults;
     }
 
@@ -241,7 +268,7 @@ final class AIAnalyticsService
         return $studentScoreData;
     }
 
-    public function getItemTotalCorrelation(): array
+    public function getItemTotalCorrelation(?string $sortColumn = null, ?string $sortDirection = null): array
     {
         $importIdentifier = $this->currentImportId;
         if ($importIdentifier === null) return [];
@@ -272,6 +299,20 @@ final class AIAnalyticsService
                 'flag' => abs(self::pearson($scorePairs)) < 0.12 ? 'low_corr' : 'ok',
             ];
         }
+
+        if ($sortColumn && $sortDirection) {
+            $validColumns = ['question_id', 'r', 'flag'];
+            if (in_array($sortColumn, $validColumns)) {
+                $direction = strtoupper($sortDirection) === 'DESC' ? -1 : 1;
+                usort($correlationResults, function($a, $b) use ($sortColumn, $direction) {
+                    $valA = $a[$sortColumn];
+                    $valB = $b[$sortColumn];
+                    if ($valA == $valB) return 0;
+                    return ($valA < $valB ? -1 : 1) * $direction;
+                });
+            }
+        }
+
         return $correlationResults;
     }
 
@@ -291,62 +332,77 @@ final class AIAnalyticsService
         return $denominator > 1e-9 ? $numerator / $denominator : 0.0;
     }
 
-    public function getStudentRiskPatterns(int $page = 1, int $perPage = 50): array
+    public function getStudentRiskPatterns(int $page = 1, int $perPage = 50, ?string $sortColumn = null, ?string $sortDirection = null): array
     {
         $importIdentifier = $this->currentImportId;
         if ($importIdentifier === null) return [];
 
-        $offset = ($page - 1) * $perPage;
+        $cacheKey = "student_risk_patterns_{$importIdentifier}";
+        if (isset($_SESSION[$cacheKey])) {
+            $riskAnalysisResults = $_SESSION[$cacheKey];
+        } else {
+            $queryStatement = $this->databaseConnection->prepare(
+                "SELECT student_id, AVG(received_score) AS avg_item,
+                        MIN(received_score) AS min_item,
+                        STDDEV_SAMP(received_score) AS std_item,
+                        COUNT(*) AS n_items
+                 FROM raw_exam_results
+                 WHERE import_id = :imp AND student_id IS NOT NULL AND received_score IS NOT NULL
+                 GROUP BY student_id"
+            );
+            $queryStatement->execute([':imp' => $importIdentifier]);
 
-        $queryStatement = $this->databaseConnection->prepare(
-            "SELECT student_id, AVG(received_score) AS avg_item,
-                    MIN(received_score) AS min_item,
-                    STDDEV_SAMP(received_score) AS std_item,
-                    COUNT(*) AS n_items
-             FROM raw_exam_results
-             WHERE import_id = :imp AND student_id IS NOT NULL AND received_score IS NOT NULL
-             GROUP BY student_id
-             LIMIT :limit OFFSET :offset"
-        );
-        $queryStatement->bindValue(':imp', $importIdentifier);
-        $queryStatement->bindValue(':limit', $perPage, PDO::PARAM_INT);
-        $queryStatement->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $queryStatement->execute();
+            $studentDisciplineScores = $this->studentDisciplineTotals($importIdentifier);
+            $scoreMapping = [];
+            foreach ($studentDisciplineScores as $studentData) { $scoreMapping[$studentData['student_id']] = $studentData['total']; }
+            $medianScore = self::calculateMedian(array_column($studentDisciplineScores, 'total'));
 
-        $studentDisciplineScores = $this->studentDisciplineTotals($importIdentifier);
-        $scoreMapping = [];
-        foreach ($studentDisciplineScores as $studentData) { $scoreMapping[$studentData['student_id']] = $studentData['total']; }
-        $medianScore = self::calculateMedian(array_column($studentDisciplineScores, 'total'));
-
-        $riskAnalysisResults = [];
-        while ($resultRow = $queryStatement->fetch(PDO::FETCH_ASSOC)) {
-            $studentId = (int)$resultRow['student_id'];
-            $averageItemScore = (float)$resultRow['avg_item'];
-            $minimumItemScore = (float)$resultRow['min_item'];
-            $standardDeviationItem = (float)($resultRow['std_item'] ?? 0);
-            $totalDisciplineScore = $scoreMapping[$studentId] ?? $averageItemScore;
-            $riskPatternType = 'ok';
-            $riskNotes = [];
-            if ($averageItemScore < 45 && $totalDisciplineScore < $medianScore) {
-                $riskPatternType = 'systemic';
-                $riskNotes[] = 'Низкие баллы по большинству вопросов - возможны системные проблемы с подготовкой';
-            } elseif ($minimumItemScore < 35 && $averageItemScore > 60) {
-                $riskPatternType = 'spot';
-                $riskNotes[] = 'Обнаружены значительные провалы по отдельным вопросам';
+            $riskAnalysisResults = [];
+            while ($resultRow = $queryStatement->fetch(PDO::FETCH_ASSOC)) {
+                $studentId = (int)$resultRow['student_id'];
+                $averageItemScore = (float)$resultRow['avg_item'];
+                $minimumItemScore = (float)$resultRow['min_item'];
+                $standardDeviationItem = (float)($resultRow['std_item'] ?? 0);
+                $totalDisciplineScore = $scoreMapping[$studentId] ?? $averageItemScore;
+                $riskPatternType = 'ok';
+                $riskNotes = [];
+                if ($averageItemScore < 45 && $totalDisciplineScore < $medianScore) {
+                    $riskPatternType = 'systemic';
+                    $riskNotes[] = 'Низкие баллы по большинству вопросов - возможны системные проблемы с подготовкой';
+                } elseif ($minimumItemScore < 35 && $averageItemScore > 60) {
+                    $riskPatternType = 'spot';
+                    $riskNotes[] = 'Обнаружены значительные провалы по отдельным вопросам';
+                }
+                if ($standardDeviationItem < 4 && (int)$resultRow['n_items'] > 6) {
+                    $riskNotes[] = 'Очень малый разброс баллов по вопросам - подозрительный паттерн ответов';
+                }
+                $riskAnalysisResults[] = [
+                    'student_id' => $studentId,
+                    'avg_item' => round($averageItemScore, 2),
+                    'min_item' => round($minimumItemScore, 2),
+                    'discipline_total' => round($totalDisciplineScore, 2),
+                    'pattern_type' => $riskPatternType,
+                    'notes' => $riskNotes,
+                ];
             }
-            if ($standardDeviationItem < 4 && (int)$resultRow['n_items'] > 6) {
-                $riskNotes[] = 'Очень малый разброс баллов по вопросам - подозрительный паттерн ответов';
-            }
-            $riskAnalysisResults[] = [
-                'student_id' => $studentId,
-                'avg_item' => round($averageItemScore, 2),
-                'min_item' => round($minimumItemScore, 2),
-                'discipline_total' => round($totalDisciplineScore, 2),
-                'pattern_type' => $riskPatternType,
-                'notes' => $riskNotes,
-            ];
+            $_SESSION[$cacheKey] = $riskAnalysisResults;
         }
-        return $riskAnalysisResults;
+
+        if ($sortColumn && $sortDirection) {
+            $validColumns = ['student_id', 'avg_item', 'min_item', 'discipline_total', 'pattern_type', 'notes'];
+            if (in_array($sortColumn, $validColumns)) {
+                $direction = strtoupper($sortDirection) === 'DESC' ? -1 : 1;
+                usort($riskAnalysisResults, function($a, $b) use ($sortColumn, $direction) {
+                    $valA = $sortColumn === 'notes' ? implode(', ', $a['notes']) : $a[$sortColumn];
+                    $valB = $sortColumn === 'notes' ? implode(', ', $b['notes']) : $b[$sortColumn];
+                    if ($valA == $valB) return 0;
+                    return ($valA < $valB ? -1 : 1) * $direction;
+                });
+            }
+        }
+
+        $offset = ($page - 1) * $perPage;
+        return array_slice($riskAnalysisResults, $offset, $perPage);
     }
 
     public function getStudentRiskPatternsCount(): int

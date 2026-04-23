@@ -1,6 +1,16 @@
 <?php
 
 session_start();
+$startTime = microtime(true);
+
+function logPerformance($message) {
+    $logFile = __DIR__ . '/performance.log';
+    $timestamp = date('Y-m-d H:i:s');
+    $elapsed = round(microtime(true) - $GLOBALS['startTime'], 3);
+    file_put_contents($logFile, "[{$timestamp}] [{$elapsed}s] {$message}\n", FILE_APPEND);
+}
+
+logPerformance('Page start');
 
 
 $availableLanguages = ['kz' => 'Қазақша', 'ru' => 'Русский', 'en' => 'English'];
@@ -410,21 +420,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_id'])) {
             break;
         }
     }
+    foreach ($_SESSION as $key => $value) {
+        if (strpos($key, 'student_risk_patterns_') === 0 || strpos($key, 'discrimination_index_') === 0) {
+            unset($_SESSION[$key]);
+        }
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['min_students_discrimination'])) {
     verify_csrf_or_fail();
     $_SESSION['min_students_discrimination'] = max(2, (int)$_POST['min_students_discrimination']);
+    foreach ($_SESSION as $key => $value) {
+        if (strpos($key, 'discrimination_index_') === 0) {
+            unset($_SESSION[$key]);
+        }
+    }
 }
 
 $minStudentsDiscrimination = $_SESSION['min_students_discrimination'] ?? 10;
 
+logPerformance('Before services init');
 
 $ai = new AIAnalyticsService($pdo, $importId);
 $ai->setMinStudentsForDiscrimination($minStudentsDiscrimination);
 $tfidf = new TfIdfService($pdo);
 $rules = new RuleClassifierService($pdo);
 $router = new AnalyticsServiceRouter ($pdo);
+
+logPerformance('After services init');
 
 $section = $_GET['section'] ?? 'overview';
 $sections = [
@@ -473,6 +496,8 @@ render_header($t['title']);
 .pagination button:hover { background: #f1f5f9; }
 .pagination button.active { background: #667eea; color: white; border-color: #667eea; }
 .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+table thead th a { color: inherit; text-decoration: none; }
+table thead th a:hover { text-decoration: underline; }
 </style>
 
 <div class="ai-container">
@@ -1381,6 +1406,9 @@ render_header($t['title']);
         $perPage = 50;
         $offset = ($page - 1) * $perPage;
 
+        $sortColumn = $_GET['validation_sort'] ?? null;
+        $sortDirection = $_GET['validation_dir'] ?? null;
+
         $questions = $ai->getQuestionAnalysisList();
         $validationData = [];
         if (!empty($questions)) {
@@ -1401,6 +1429,19 @@ render_header($t['title']);
             endforeach;
         }
 
+        if ($sortColumn && $sortDirection) {
+            $validColumns = ['question_id', 'syllabus_title', 'avg_score', 'attempts', 'status'];
+            if (in_array($sortColumn, $validColumns)) {
+                $direction = strtoupper($sortDirection) === 'DESC' ? -1 : 1;
+                usort($validationData, function($a, $b) use ($sortColumn, $direction) {
+                    $valA = $a[$sortColumn];
+                    $valB = $b[$sortColumn];
+                    if ($valA == $valB) return 0;
+                    return ($valA < $valB ? -1 : 1) * $direction;
+                });
+            }
+        }
+
         $totalItems = count($validationData);
         $totalPages = ceil($totalItems / $perPage);
         $page = min($page, max(1, $totalPages));
@@ -1408,8 +1449,15 @@ render_header($t['title']);
         $pagedData = array_slice($validationData, $offset, $perPage);
         ?>
         <div class="table-responsive">
-          <table class="table table-hover sortable">
-            <thead><tr><th class="sortable" data-sort="id"><?= $t['th_id'] ?> ⬍</th><th class="sortable" data-sort="text"><?= $t['th_topic'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_avg_score'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_attempts'] ?> ⬍</th><th class="sortable" data-sort="text"><?= $t['th_status'] ?> ⬍</th><th class="sortable" data-sort="text"><?= $t['th_issues'] ?> ⬍</th></tr></thead>
+          <table class="table table-hover">
+            <thead><tr>
+              <th><a href="?section=validation&validation_sort=question_id&validation_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_id'] ?> <?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=validation&validation_sort=syllabus_title&validation_dir=<?= ($sortColumn === 'syllabus_title' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_topic'] ?> <?= ($sortColumn === 'syllabus_title') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=validation&validation_sort=avg_score&validation_dir=<?= ($sortColumn === 'avg_score' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_avg_score'] ?> <?= ($sortColumn === 'avg_score') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=validation&validation_sort=attempts&validation_dir=<?= ($sortColumn === 'attempts' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_attempts'] ?> <?= ($sortColumn === 'attempts') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=validation&validation_sort=status&validation_dir=<?= ($sortColumn === 'status' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_status'] ?> <?= ($sortColumn === 'status') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><?= $t['th_issues'] ?></th>
+            </tr></thead>
             <tbody>
               <?php if (empty($pagedData)): echo '<tr><td colspan="6" class="text-muted">' . $t['no_data'] . '</td></tr>';
               else:
@@ -1430,23 +1478,23 @@ render_header($t['title']);
         <?php if ($totalPages > 1): ?>
         <div class="pagination">
           <?php if ($page > 1): ?>
-            <a href="?section=validation&validation_page=<?= $page - 1 ?>"><button>&laquo;</button></a>
+            <a href="?section=validation&validation_page=<?= $page - 1 ?>&validation_sort=<?= $sortColumn ?>&validation_dir=<?= $sortDirection ?>"><button>&laquo;</button></a>
           <?php else: ?>
             <button disabled>&laquo;</button>
           <?php endif; ?>
-          
+
           <?php for ($i = 1; $i <= $totalPages; $i++): ?>
             <?php if ($i == $page): ?>
               <button class="active"><?= $i ?></button>
             <?php elseif (abs($i - $page) <= 2 || $i == 1 || $i == $totalPages): ?>
-              <a href="?section=validation&validation_page=<?= $i ?>"><button><?= $i ?></button></a>
+              <a href="?section=validation&validation_page=<?= $i ?>&validation_sort=<?= $sortColumn ?>&validation_dir=<?= $sortDirection ?>"><button><?= $i ?></button></a>
             <?php elseif (abs($i - $page) == 3): ?>
               <button disabled>...</button>
             <?php endif; ?>
           <?php endfor; ?>
-          
+
           <?php if ($page < $totalPages): ?>
-            <a href="?section=validation&validation_page=<?= $page + 1 ?>"><button>&raquo;</button></a>
+            <a href="?section=validation&validation_page=<?= $page + 1 ?>&validation_sort=<?= $sortColumn ?>&validation_dir=<?= $sortDirection ?>"><button>&raquo;</button></a>
           <?php else: ?>
             <button disabled>&raquo;</button>
           <?php endif; ?>
@@ -1503,10 +1551,15 @@ render_header($t['title']);
           </div>
         <?php endif; ?>
         <?php
+        logPerformance('Quality section start');
         $page = isset($_GET['quality_page']) ? max(1, (int)$_GET['quality_page']) : 1;
         $perPage = 50;
         $offset = ($page - 1) * $perPage;
 
+        $sortColumn = $_GET['quality_sort'] ?? null;
+        $sortDirection = $_GET['quality_dir'] ?? null;
+
+        logPerformance('Before getQuestionQualityMetrics');
         $disciplineMap = [];
         try {
             $stmtDisc = $pdo->query("
@@ -1518,11 +1571,15 @@ render_header($t['title']);
             }
         } catch (Throwable $e) {}
 
-        $metrics = $ai->getQuestionQualityMetrics();
+        $metrics = $ai->getQuestionQualityMetrics($sortColumn, $sortDirection);
+        logPerformance('After getQuestionQualityMetrics');
+
         $disc = [];
         try {
             $disc = $ai->getDiscriminationIndex();
         } catch (Throwable $e) {}
+        logPerformance('After getDiscriminationIndex');
+
         $dmap = [];
         foreach ($disc as $d) { $dmap[(int)$d['question_id']] = $d; }
 
@@ -1547,6 +1604,28 @@ render_header($t['title']);
             endforeach;
         }
 
+        if ($sortColumn && $sortDirection) {
+            $validColumns = ['discipline', 'flag_text', 'discrimination', 'reason'];
+            if (in_array($sortColumn, $validColumns)) {
+                $direction = strtoupper($sortDirection) === 'DESC' ? -1 : 1;
+                usort($qualityData, function($a, $b) use ($sortColumn, $direction) {
+                    $valA = $a[$sortColumn];
+                    $valB = $b[$sortColumn];
+
+                    if ($sortColumn === 'flag_text') {
+                        $flagOrder = ['Сложный' => 3, 'Легкий' => 2, 'Норма' => 1];
+                        $orderA = $flagOrder[$valA] ?? 0;
+                        $orderB = $flagOrder[$valB] ?? 0;
+                        if ($orderA == $orderB) return 0;
+                        return ($orderA < $orderB ? -1 : 1) * $direction;
+                    }
+
+                    if ($valA == $valB) return 0;
+                    return ($valA < $valB ? -1 : 1) * $direction;
+                });
+            }
+        }
+
         $totalItems = count($qualityData);
         $totalPages = ceil($totalItems / $perPage);
         $page = min($page, max(1, $totalPages));
@@ -1554,8 +1633,18 @@ render_header($t['title']);
         $pagedData = array_slice($qualityData, $offset, $perPage);
         ?>
         <div class="table-responsive">
-          <table class="table table-hover sortable">
-            <thead><tr><th class="sortable" data-sort="id"><?= $t['th_id'] ?> ⬍</th><th class="sortable" data-sort="text">Discipline ⬍</th><th class="sortable" data-sort="number"><?= $t['th_n'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_avg'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_success_pct'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_difficulty_pct'] ?> ⬍</th><th class="sortable" data-sort="text"><?= $t['th_flag'] ?> ⬍</th><th class="sortable" data-sort="text"><?= $t['th_discrimination'] ?> ⬍</th><th class="sortable" data-sort="text"><?= $t['th_reason'] ?> ⬍</th></tr></thead>
+          <table class="table table-hover">
+            <thead><tr>
+              <th><a href="?section=quality&quality_sort=question_id&quality_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_id'] ?> <?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=quality&quality_sort=discipline&quality_dir=<?= ($sortColumn === 'discipline' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Discipline <?= ($sortColumn === 'discipline') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=quality&quality_sort=n&quality_dir=<?= ($sortColumn === 'n' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_n'] ?> <?= ($sortColumn === 'n') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=quality&quality_sort=mean_score&quality_dir=<?= ($sortColumn === 'mean_score' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_avg'] ?> <?= ($sortColumn === 'mean_score') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=quality&quality_sort=p_correct_proxy&quality_dir=<?= ($sortColumn === 'p_correct_proxy' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_success_pct'] ?> <?= ($sortColumn === 'p_correct_proxy') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=quality&quality_sort=difficulty_pct&quality_dir=<?= ($sortColumn === 'difficulty_pct' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_difficulty_pct'] ?> <?= ($sortColumn === 'difficulty_pct') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=quality&quality_sort=flag_text&quality_dir=<?= ($sortColumn === 'flag_text' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_flag'] ?> <?= ($sortColumn === 'flag_text') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=quality&quality_sort=discrimination&quality_dir=<?= ($sortColumn === 'discrimination' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_discrimination'] ?> <?= ($sortColumn === 'discrimination') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=quality&quality_sort=reason&quality_dir=<?= ($sortColumn === 'reason' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_reason'] ?> <?= ($sortColumn === 'reason') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+            </tr></thead>
             <tbody>
               <?php if (empty($pagedData)): echo '<tr><td colspan="9" class="text-muted">' . $t['no_data'] . '</td></tr>';
               else:
@@ -1584,19 +1673,19 @@ render_header($t['title']);
           <?php else: ?>
             <button disabled>&laquo;</button>
           <?php endif; ?>
-          
+
           <?php for ($i = 1; $i <= $totalPages; $i++): ?>
             <?php if ($i == $page): ?>
               <button class="active"><?= $i ?></button>
             <?php elseif (abs($i - $page) <= 2 || $i == 1 || $i == $totalPages): ?>
-              <a href="?section=quality&quality_page=<?= $i ?>"><button><?= $i ?></button></a>
+              <a href="?section=quality&quality_page=<?= $i ?>&quality_sort=<?= $sortColumn ?>&quality_dir=<?= $sortDirection ?>"><button><?= $i ?></button></a>
             <?php elseif (abs($i - $page) == 3): ?>
               <button disabled>...</button>
             <?php endif; ?>
           <?php endfor; ?>
-          
+
           <?php if ($page < $totalPages): ?>
-            <a href="?section=quality&quality_page=<?= $page + 1 ?>"><button>&raquo;</button></a>
+            <a href="?section=quality&quality_page=<?= $page + 1 ?>&quality_sort=<?= $sortColumn ?>&quality_dir=<?= $sortDirection ?>"><button>&raquo;</button></a>
           <?php else: ?>
             <button disabled>&raquo;</button>
           <?php endif; ?>
@@ -1619,7 +1708,10 @@ render_header($t['title']);
         $perPage = 50;
         $offset = ($page - 1) * $perPage;
 
-        $corr = $ai->getItemTotalCorrelation();
+        $sortColumn = $_GET['correlation_sort'] ?? null;
+        $sortDirection = $_GET['correlation_dir'] ?? null;
+
+        $corr = $ai->getItemTotalCorrelation($sortColumn, $sortDirection);
         $correlationData = [];
         if (!empty($corr)) {
             foreach ($corr as $c):
@@ -1633,6 +1725,16 @@ render_header($t['title']);
             endforeach;
         }
 
+        if ($sortColumn && $sortDirection && $sortColumn === 'flag') {
+            $direction = strtoupper($sortDirection) === 'DESC' ? -1 : 1;
+            usort($correlationData, function($a, $b) use ($direction) {
+                $valA = $a['flag'];
+                $valB = $b['flag'];
+                if ($valA == $valB) return 0;
+                return ($valA < $valB ? -1 : 1) * $direction;
+            });
+        }
+
         $totalItems = count($correlationData);
         $totalPages = ceil($totalItems / $perPage);
         $page = min($page, max(1, $totalPages));
@@ -1640,8 +1742,12 @@ render_header($t['title']);
         $pagedData = array_slice($correlationData, $offset, $perPage);
         ?>
         <div class="table-responsive">
-          <table class="table table-hover sortable">
-            <thead><tr><th class="sortable" data-sort="id"><?= $t['th_id'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_coefficient'] ?> ⬍</th><th class="sortable" data-sort="text"><?= $t['th_flag'] ?> ⬍</th></tr></thead>
+          <table class="table table-hover">
+            <thead><tr>
+              <th><a href="?section=correlation&correlation_sort=question_id&correlation_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_id'] ?> <?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=correlation&correlation_sort=r&correlation_dir=<?= ($sortColumn === 'r' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_coefficient'] ?> <?= ($sortColumn === 'r') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=correlation&correlation_sort=flag&correlation_dir=<?= ($sortColumn === 'flag' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_flag'] ?> <?= ($sortColumn === 'flag') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+            </tr></thead>
             <tbody>
               <?php if (empty($pagedData)): echo '<tr><td colspan="3" class="text-muted">' . $t['no_data'] . '</td></tr>';
               else:
@@ -1659,23 +1765,23 @@ render_header($t['title']);
         <?php if ($totalPages > 1): ?>
         <div class="pagination">
           <?php if ($page > 1): ?>
-            <a href="?section=correlation&correlation_page=<?= $page - 1 ?>"><button>&laquo;</button></a>
+            <a href="?section=correlation&correlation_page=<?= $page - 1 ?>&correlation_sort=<?= $sortColumn ?>&correlation_dir=<?= $sortDirection ?>"><button>&laquo;</button></a>
           <?php else: ?>
             <button disabled>&laquo;</button>
           <?php endif; ?>
-          
+
           <?php for ($i = 1; $i <= $totalPages; $i++): ?>
             <?php if ($i == $page): ?>
               <button class="active"><?= $i ?></button>
             <?php elseif (abs($i - $page) <= 2 || $i == 1 || $i == $totalPages): ?>
-              <a href="?section=correlation&correlation_page=<?= $i ?>"><button><?= $i ?></button></a>
+              <a href="?section=correlation&correlation_page=<?= $i ?>&correlation_sort=<?= $sortColumn ?>&correlation_dir=<?= $sortDirection ?>"><button><?= $i ?></button></a>
             <?php elseif (abs($i - $page) == 3): ?>
               <button disabled>...</button>
             <?php endif; ?>
           <?php endfor; ?>
-          
+
           <?php if ($page < $totalPages): ?>
-            <a href="?section=correlation&correlation_page=<?= $page + 1 ?>"><button>&raquo;</button></a>
+            <a href="?section=correlation&correlation_page=<?= $page + 1 ?>&correlation_sort=<?= $sortColumn ?>&correlation_dir=<?= $sortDirection ?>"><button>&raquo;</button></a>
           <?php else: ?>
             <button disabled>&raquo;</button>
           <?php endif; ?>
@@ -1697,11 +1803,14 @@ render_header($t['title']);
         $page = isset($_GET['students_page']) ? max(1, (int)$_GET['students_page']) : 1;
         $perPage = 50;
 
+        $sortColumn = $_GET['students_sort'] ?? null;
+        $sortDirection = $_GET['students_dir'] ?? null;
+
         $totalItems = $ai->getStudentRiskPatternsCount();
         $totalPages = ceil($totalItems / $perPage);
         $page = min($page, max(1, $totalPages));
 
-        $patterns = $ai->getStudentRiskPatterns($page, $perPage);
+        $patterns = $ai->getStudentRiskPatterns($page, $perPage, $sortColumn, $sortDirection);
         $studentsData = [];
         if (!empty($patterns)) {
             foreach ($patterns as $p):
@@ -1719,8 +1828,15 @@ render_header($t['title']);
         }
         ?>
         <div class="table-responsive">
-          <table class="table table-hover sortable">
-            <thead><tr><th class="sortable" data-sort="id"><?= $t['th_id'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_avg'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_min'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_total'] ?> ⬍</th><th class="sortable" data-sort="text"><?= $t['th_type'] ?> ⬍</th><th class="sortable" data-sort="text"><?= $t['th_notes'] ?> ⬍</th></tr></thead>
+          <table class="table table-hover">
+            <thead><tr>
+              <th><a href="?section=students&students_sort=student_id&students_dir=<?= ($sortColumn === 'student_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_id'] ?> <?= ($sortColumn === 'student_id') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=students&students_sort=avg_item&students_dir=<?= ($sortColumn === 'avg_item' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_avg'] ?> <?= ($sortColumn === 'avg_item') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=students&students_sort=min_item&students_dir=<?= ($sortColumn === 'min_item' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_min'] ?> <?= ($sortColumn === 'min_item') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=students&students_sort=discipline_total&students_dir=<?= ($sortColumn === 'discipline_total' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_total'] ?> <?= ($sortColumn === 'discipline_total') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=students&students_sort=pattern_type&students_dir=<?= ($sortColumn === 'pattern_type' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_type'] ?> <?= ($sortColumn === 'pattern_type') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=students&students_sort=notes&students_dir=<?= ($sortColumn === 'notes' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= $t['th_notes'] ?> <?= ($sortColumn === 'notes') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+            </tr></thead>
             <tbody>
               <?php if (empty($studentsData)): echo '<tr><td colspan="6" class="text-muted">' . $t['no_data'] . '</td></tr>';
               else:
@@ -1741,23 +1857,23 @@ render_header($t['title']);
         <?php if ($totalPages > 1): ?>
         <div class="pagination">
           <?php if ($page > 1): ?>
-            <a href="?section=students&students_page=<?= $page - 1 ?>"><button>&laquo;</button></a>
+            <a href="?section=students&students_page=<?= $page - 1 ?>&students_sort=<?= $sortColumn ?>&students_dir=<?= $sortDirection ?>"><button>&laquo;</button></a>
           <?php else: ?>
             <button disabled>&laquo;</button>
           <?php endif; ?>
-          
+
           <?php for ($i = 1; $i <= $totalPages; $i++): ?>
             <?php if ($i == $page): ?>
               <button class="active"><?= $i ?></button>
             <?php elseif (abs($i - $page) <= 2 || $i == 1 || $i == $totalPages): ?>
-              <a href="?section=students&students_page=<?= $i ?>"><button><?= $i ?></button></a>
+              <a href="?section=students&students_page=<?= $i ?>&students_sort=<?= $sortColumn ?>&students_dir=<?= $sortDirection ?>"><button><?= $i ?></button></a>
             <?php elseif (abs($i - $page) == 3): ?>
               <button disabled>...</button>
             <?php endif; ?>
           <?php endfor; ?>
-          
+
           <?php if ($page < $totalPages): ?>
-            <a href="?section=students&students_page=<?= $page + 1 ?>"><button>&raquo;</button></a>
+            <a href="?section=students&students_page=<?= $page + 1 ?>&students_sort=<?= $sortColumn ?>&students_dir=<?= $sortDirection ?>"><button>&raquo;</button></a>
           <?php else: ?>
             <button disabled>&raquo;</button>
           <?php endif; ?>
@@ -1779,6 +1895,9 @@ render_header($t['title']);
         $perPage = 50;
         $offset = ($page - 1) * $perPage;
 
+        $sortColumn = $_GET['semantic_sort'] ?? null;
+        $sortDirection = $_GET['semantic_dir'] ?? null;
+
         $semantic = $tfidf->analyzeQuestionSyllabusAlignment();
         $semanticData = [];
         if (!empty($semantic)) {
@@ -1795,6 +1914,19 @@ render_header($t['title']);
             endforeach;
         }
 
+        if ($sortColumn && $sortDirection) {
+            $validColumns = ['question_id', 'syllabus_title', 'discipline_name', 'average_score', 'alignment_level'];
+            if (in_array($sortColumn, $validColumns)) {
+                $direction = strtoupper($sortDirection) === 'DESC' ? -1 : 1;
+                usort($semanticData, function($a, $b) use ($sortColumn, $direction) {
+                    $valA = $a[$sortColumn];
+                    $valB = $b[$sortColumn];
+                    if ($valA == $valB) return 0;
+                    return ($valA < $valB ? -1 : 1) * $direction;
+                });
+            }
+        }
+
         $totalItems = count($semanticData);
         $totalPages = ceil($totalItems / $perPage);
         $page = min($page, max(1, $totalPages));
@@ -1802,8 +1934,14 @@ render_header($t['title']);
         $pagedData = array_slice($semanticData, $offset, $perPage);
         ?>
         <div class="table-responsive">
-          <table class="table table-hover sortable">
-            <thead><tr><th class="sortable" data-sort="id">ID ⬍</th><th class="sortable" data-sort="text">Тема ⬍</th><th class="sortable" data-sort="text">Дисциплина ⬍</th><th class="sortable" data-sort="number">Средний балл ⬍</th><th class="sortable" data-sort="text">Статус ⬍</th></tr></thead>
+          <table class="table table-hover">
+            <thead><tr>
+              <th><a href="?section=semantic&semantic_sort=question_id&semantic_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">ID <?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=semantic&semantic_sort=syllabus_title&semantic_dir=<?= ($sortColumn === 'syllabus_title' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Тема <?= ($sortColumn === 'syllabus_title') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=semantic&semantic_sort=discipline_name&semantic_dir=<?= ($sortColumn === 'discipline_name' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Дисциплина <?= ($sortColumn === 'discipline_name') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=semantic&semantic_sort=average_score&semantic_dir=<?= ($sortColumn === 'average_score' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Средний балл <?= ($sortColumn === 'average_score') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+              <th><a href="?section=semantic&semantic_sort=alignment_level&semantic_dir=<?= ($sortColumn === 'alignment_level' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>">Статус <?= ($sortColumn === 'alignment_level') ? ($sortDirection === 'ASC' ? '⬎' : '⬍') : '⬍' ?></a></th>
+            </tr></thead>
             <tbody>
               <?php if (empty($pagedData)): echo '<tr><td colspan="5" class="text-muted">' . $t['no_data'] . '</td></tr>';
               else:
@@ -1823,23 +1961,23 @@ render_header($t['title']);
         <?php if ($totalPages > 1): ?>
         <div class="pagination">
           <?php if ($page > 1): ?>
-            <a href="?section=semantic&semantic_page=<?= $page - 1 ?>"><button>&laquo;</button></a>
+            <a href="?section=semantic&semantic_page=<?= $page - 1 ?>&semantic_sort=<?= $sortColumn ?>&semantic_dir=<?= $sortDirection ?>"><button>&laquo;</button></a>
           <?php else: ?>
             <button disabled>&laquo;</button>
           <?php endif; ?>
-          
+
           <?php for ($i = 1; $i <= $totalPages; $i++): ?>
             <?php if ($i == $page): ?>
               <button class="active"><?= $i ?></button>
             <?php elseif (abs($i - $page) <= 2 || $i == 1 || $i == $totalPages): ?>
-              <a href="?section=semantic&semantic_page=<?= $i ?>"><button><?= $i ?></button></a>
+              <a href="?section=semantic&semantic_page=<?= $i ?>&semantic_sort=<?= $sortColumn ?>&semantic_dir=<?= $sortDirection ?>"><button><?= $i ?></button></a>
             <?php elseif (abs($i - $page) == 3): ?>
               <button disabled>...</button>
             <?php endif; ?>
           <?php endfor; ?>
-          
+
           <?php if ($page < $totalPages): ?>
-            <a href="?section=semantic&semantic_page=<?= $page + 1 ?>"><button>&raquo;</button></a>
+            <a href="?section=semantic&semantic_page=<?= $page + 1 ?>&semantic_sort=<?= $sortColumn ?>&semantic_dir=<?= $sortDirection ?>"><button>&raquo;</button></a>
           <?php else: ?>
             <button disabled>&raquo;</button>
           <?php endif; ?>
@@ -2054,54 +2192,9 @@ function showSection(sectionId) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  let currentSort = { column: null, direction: 'asc' };
-  
-  document.querySelectorAll('.sortable').forEach(header => {
-    header.style.cursor = 'pointer';
-    header.addEventListener('click', function(event) {
+  document.querySelectorAll('.table tbody').forEach(tbody => {
+    tbody.addEventListener('click', function(event) {
       event.stopPropagation();
-      event.preventDefault();
-      
-      const table = this.closest('table');
-      const tbody = table.querySelector('tbody');
-      const rows = Array.from(tbody.querySelectorAll('tr'));
-      const sortType = this.getAttribute('data-sort');
-      const columnIndex = Array.from(this.parentNode.children).indexOf(this);
-      
-
-      if (currentSort.column === columnIndex) {
-        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
-      } else {
-        currentSort.column = columnIndex;
-        currentSort.direction = 'asc';
-      }
-      const isAsc = currentSort.direction === 'asc';
-      
-
-      this.parentNode.querySelectorAll('.sortable').forEach((h, index) => {
-        const baseText = h.textContent.replace(/[⬍⬎]/g, '').trim();
-        if (index === columnIndex) {
-          h.textContent = baseText + (isAsc ? ' ⬎' : ' ⬍');
-        } else {
-          h.textContent = baseText + ' ⬍';
-        }
-      });
-      
-      rows.sort((a, b) => {
-        let aVal = a.children[columnIndex].textContent.trim();
-        let bVal = b.children[columnIndex].textContent.trim();
-        
-        if (sortType === 'number') {
-          aVal = parseFloat(aVal) || 0;
-          bVal = parseFloat(bVal) || 0;
-        }
-        
-        if (aVal < bVal) return isAsc ? -1 : 1;
-        if (aVal > bVal) return isAsc ? 1 : -1;
-        return 0;
-      });
-      
-      rows.forEach(row => tbody.appendChild(row));
     });
   });
 });
@@ -2414,5 +2507,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+
+<?php
+$loadTime = round(microtime(true) - $startTime, 3);
+logPerformance("Page end - Total: {$loadTime}s");
+echo "<!-- Page load time: {$loadTime}s -->";
+echo "<!-- Check performance.log for details -->";
+?>
 
 <?php render_footer(); ?>
