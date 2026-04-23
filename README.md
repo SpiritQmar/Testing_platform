@@ -50,10 +50,6 @@ pip install -r requirements.txt
 python embeddings_api.py
 ```
 
-<img src="images/img.png" width="800">
 
-<img src="images/img_1.png" width="800">
-
-<img src="images/img_2.png" width="800">
  
 
