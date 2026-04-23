@@ -1,0 +1,11 @@
+.git
+.gitignore
+.vscode
+.idea
+node_modules
+uploads/*
+!uploads/.gitkeep
+*.log
+debug_discrimination.log
+.env
+.env.local

@@ -1,0 +1,52 @@
+services:
+  app:
+    build: .
+    container_name: ai_analytics_app
+    ports:
+      - "8080:80"
+    depends_on:
+      db:
+        condition: service_healthy
+      embeddings:
+        condition: service_started
+    environment:
+      DB_HOST: db
+      DB_NAME: ai_analytics
+      DB_USER: root
+      DB_PASS: root
+      BASE_URL: http://localhost:8080
+      EMBEDDINGS_API_URL: http://embeddings:8000
+    volumes:
+      - ./ai_standalone:/var/www/html
+      - ./ai_standalone/uploads:/var/www/html/uploads
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    container_name: ai_analytics_db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ai_analytics
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  embeddings:
+    build:
+      context: ./ai_standalone/python_services
+      dockerfile: Dockerfile
+    container_name: ai_analytics_embeddings
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  mysql_data:

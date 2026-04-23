@@ -412,8 +412,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_id'])) {
     }
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['min_students_discrimination'])) {
+    verify_csrf_or_fail();
+    $_SESSION['min_students_discrimination'] = max(2, (int)$_POST['min_students_discrimination']);
+}
+
+$minStudentsDiscrimination = $_SESSION['min_students_discrimination'] ?? 10;
+
 
 $ai = new AIAnalyticsService($pdo, $importId);
+$ai->setMinStudentsForDiscrimination($minStudentsDiscrimination);
 $tfidf = new TfIdfService($pdo);
 $rules = new RuleClassifierService($pdo);
 $router = new AnalyticsServiceRouter ($pdo);
@@ -1455,7 +1463,45 @@ render_header($t['title']);
     <div class="table-container">
       <h3 class="h5 mb-3"><?= $t['quality'] ?></h3>
       <p class="text-muted small mb-3"><?= $t['quality_desc'] ?></p>
+
       <?php if ($importId !== null): ?>
+        <?php
+        $reliabilityMetrics = ['cronbach_alpha' => 0, 'avg_inter_item_correlation' => 0, 'question_count' => 0, 'interpretation' => 'Нет данных'];
+        try {
+            $reliabilityMetrics = $ai->getExamReliabilityMetrics();
+        } catch (Throwable $e) {}
+        ?>
+        <?php if ($reliabilityMetrics['question_count'] >= 2): ?>
+          <div class="card mb-4 border-primary">
+            <div class="card-header bg-primary text-white">
+              <strong>Надежность экзамена</strong>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-3 text-center">
+                  <div class="h2 mb-1"><?= $reliabilityMetrics['cronbach_alpha'] ?></div>
+                  <small class="text-muted">Cronbach's α</small>
+                </div>
+                <div class="col-md-3 text-center">
+                  <div class="h2 mb-1"><?= $reliabilityMetrics['avg_inter_item_correlation'] ?></div>
+                  <small class="text-muted">Ср. корреляция</small>
+                </div>
+                <div class="col-md-3 text-center">
+                  <div class="h2 mb-1"><?= $reliabilityMetrics['question_count'] ?></div>
+                  <small class="text-muted">Вопросов</small>
+                </div>
+                <div class="col-md-3 text-center">
+                  <span class="badge badge-soft <?= $reliabilityMetrics['cronbach_alpha'] >= 0.8 ? 'success' : ($reliabilityMetrics['cronbach_alpha'] >= 0.7 ? 'warning' : 'danger') ?> fs-6">
+                    <?= $reliabilityMetrics['interpretation'] ?>
+                  </span>
+                </div>
+              </div>
+              <p class="text-muted small mt-3 mb-0">
+                Cronbach's α ≥ 0.9 — отлично, ≥ 0.8 — хорошо, ≥ 0.7 — приемлемо, < 0.6 — требуется ревизия вопросов
+              </p>
+            </div>
+          </div>
+        <?php endif; ?>
         <?php
         $page = isset($_GET['quality_page']) ? max(1, (int)$_GET['quality_page']) : 1;
         $perPage = 50;
@@ -1473,7 +1519,10 @@ render_header($t['title']);
         } catch (Throwable $e) {}
 
         $metrics = $ai->getQuestionQualityMetrics();
-        $disc = $ai->getDiscriminationIndex();
+        $disc = [];
+        try {
+            $disc = $ai->getDiscriminationIndex();
+        } catch (Throwable $e) {}
         $dmap = [];
         foreach ($disc as $d) { $dmap[(int)$d['question_id']] = $d; }
 
@@ -1647,9 +1696,12 @@ render_header($t['title']);
         <?php
         $page = isset($_GET['students_page']) ? max(1, (int)$_GET['students_page']) : 1;
         $perPage = 50;
-        $offset = ($page - 1) * $perPage;
 
-        $patterns = $ai->getStudentRiskPatterns();
+        $totalItems = $ai->getStudentRiskPatternsCount();
+        $totalPages = ceil($totalItems / $perPage);
+        $page = min($page, max(1, $totalPages));
+
+        $patterns = $ai->getStudentRiskPatterns($page, $perPage);
         $studentsData = [];
         if (!empty($patterns)) {
             foreach ($patterns as $p):
@@ -1665,20 +1717,14 @@ render_header($t['title']);
                 ];
             endforeach;
         }
-
-        $totalItems = count($studentsData);
-        $totalPages = ceil($totalItems / $perPage);
-        $page = min($page, max(1, $totalPages));
-        $offset = ($page - 1) * $perPage;
-        $pagedData = array_slice($studentsData, $offset, $perPage);
         ?>
         <div class="table-responsive">
           <table class="table table-hover sortable">
             <thead><tr><th class="sortable" data-sort="id"><?= $t['th_id'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_avg'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_min'] ?> ⬍</th><th class="sortable" data-sort="number"><?= $t['th_total'] ?> ⬍</th><th class="sortable" data-sort="text"><?= $t['th_type'] ?> ⬍</th><th class="sortable" data-sort="text"><?= $t['th_notes'] ?> ⬍</th></tr></thead>
             <tbody>
-              <?php if (empty($pagedData)): echo '<tr><td colspan="6" class="text-muted">' . $t['no_data'] . '</td></tr>';
+              <?php if (empty($studentsData)): echo '<tr><td colspan="6" class="text-muted">' . $t['no_data'] . '</td></tr>';
               else:
-                foreach ($pagedData as $row):
+                foreach ($studentsData as $row):
               ?>
                 <tr>
                   <td><strong><?= $row['student_id'] ?></strong></td>
@@ -1915,6 +1961,11 @@ render_header($t['title']);
               <label class="form-label">Минимальное количество попыток</label>
               <input type="number" min="1" name="min_attempts" class="form-control" value="5">
               <small class="text-muted">Минимальное количество ответов для анализа качества вопроса</small>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Минимальное количество студентов для дискриминации</label>
+              <input type="number" min="2" name="min_students_discrimination" class="form-control" value="<?= $minStudentsDiscrimination ?>">
+              <small class="text-muted">Минимальное количество студентов для расчёта дискриминационного индекса (корреляция Пирсона)</small>
             </div>
             <div class="mb-3">
               <label class="form-label">Порог дедупликации (0-1)</label>

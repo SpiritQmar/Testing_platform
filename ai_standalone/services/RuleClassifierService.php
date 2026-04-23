@@ -92,29 +92,231 @@ final class RuleClassifierService
 
     public function calculateQuestionQualityMetrics(int $questionId): array
     {
+        $maxScoreQuery = $this->databaseConnection->prepare("
+            SELECT max_score FROM ai_question_ai WHERE question_id = :id LIMIT 1
+        ");
+        $maxScoreQuery->execute([':id' => $questionId]);
+        $maxScoreRow = $maxScoreQuery->fetch(PDO::FETCH_ASSOC);
+        $maximumPossibleScore = (float)($maxScoreRow['max_score'] ?? 100);
+
         $queryStatement = $this->databaseConnection->prepare("
-            SELECT q.max_score, COUNT(a.answer_id) as total_attempts, AVG(a.score_received) as avg_score
-            FROM hier_questions q
-            LEFT JOIN hier_student_answers a ON a.question_id = q.question_id
-            WHERE q.question_id = :id GROUP BY q.question_id, q.max_score
+            SELECT COUNT(*) as total_attempts, AVG(received_score) as avg_score
+            FROM raw_exam_results
+            WHERE question_id = :id
         ");
         $queryStatement->execute([':id' => $questionId]);
         $questionStatistics = $queryStatement->fetch(PDO::FETCH_ASSOC);
 
         if (!$questionStatistics || $questionStatistics['total_attempts'] == 0) {
-            return ['avg_score' => 0, 'difficulty_index' => 0, 'discrimination_index' => 0, 'reliability' => 0];
+            return ['avg_score' => 0, 'difficulty_index' => 0, 'discrimination_index' => 0, 'reliability' => 0, 'total_attempts' => 0];
         }
 
-        $maximumPossibleScore = (float)$questionStatistics['max_score'];
         $averageStudentScore = (float)$questionStatistics['avg_score'];
         $questionDifficultyIndex = 1 - ($averageStudentScore / $maximumPossibleScore);
+
+        $discriminationIndex = $this->calculateDiscriminationPower($questionId);
 
         return [
             'avg_score' => $averageStudentScore,
             'difficulty_index' => $questionDifficultyIndex,
-            'discrimination_index' => 0,
+            'discrimination_index' => $discriminationIndex,
             'reliability' => 1,
             'total_attempts' => (int)$questionStatistics['total_attempts'],
         ];
+    }
+
+    private function calculateDiscriminationPower(int $questionId): float
+    {
+        $questionScoresQuery = $this->databaseConnection->prepare("
+            SELECT student_id, received_score
+            FROM raw_exam_results
+            WHERE question_id = :question_id
+        ");
+        $questionScoresQuery->execute([':question_id' => $questionId]);
+        $questionData = $questionScoresQuery->fetchAll(PDO::FETCH_ASSOC);
+
+        if (count($questionData) < 2) {
+            return 0;
+        }
+
+        $studentIds = array_column($questionData, 'student_id');
+        $studentIdsString = implode(',', array_map('intval', $studentIds));
+
+        $totalScoresQuery = $this->databaseConnection->query("
+            SELECT student_id, AVG(discipline_score) as total_score
+            FROM raw_exam_results
+            WHERE student_id IN ($studentIdsString)
+            GROUP BY student_id
+        ");
+        $totalScoresData = $totalScoresQuery->fetchAll(PDO::FETCH_ASSOC);
+
+        $totalScoresMap = [];
+        foreach ($totalScoresData as $row) {
+            $totalScoresMap[$row['student_id']] = (float)$row['total_score'];
+        }
+
+        $pairedScores = [];
+        foreach ($questionData as $qRow) {
+            $studentId = $qRow['student_id'];
+            if (isset($totalScoresMap[$studentId])) {
+                $pairedScores[] = [
+                    'question' => (float)$qRow['received_score'],
+                    'total' => $totalScoresMap[$studentId]
+                ];
+            }
+        }
+
+        if (count($pairedScores) < 2) {
+            return 0;
+        }
+
+        $questionScores = array_column($pairedScores, 'question');
+        $totalScores = array_column($pairedScores, 'total');
+
+        return $this->calculatePearsonCorrelation($questionScores, $totalScores);
+    }
+
+    private function calculatePearsonCorrelation(array $firstDataset, array $secondDataset): float
+    {
+        $dataCount = count($firstDataset);
+
+        if ($dataCount !== count($secondDataset) || $dataCount < 2) {
+            return 0;
+        }
+
+        $firstMean = array_sum($firstDataset) / $dataCount;
+        $secondMean = array_sum($secondDataset) / $dataCount;
+
+        $numeratorSum = 0;
+        $firstDenominatorSum = 0;
+        $secondDenominatorSum = 0;
+
+        for ($index = 0; $index < $dataCount; $index++) {
+            $firstDeviation = $firstDataset[$index] - $firstMean;
+            $secondDeviation = $secondDataset[$index] - $secondMean;
+
+            $numeratorSum += $firstDeviation * $secondDeviation;
+            $firstDenominatorSum += $firstDeviation * $firstDeviation;
+            $secondDenominatorSum += $secondDeviation * $secondDeviation;
+        }
+
+        $denominatorProduct = sqrt($firstDenominatorSum * $secondDenominatorSum);
+
+        if ($denominatorProduct == 0) {
+            return 0;
+        }
+
+        return round($numeratorSum / $denominatorProduct, 3);
+    }
+
+    public function calculateExamReliability(int $examId): array
+    {
+        $questionsQuery = $this->databaseConnection->prepare("
+            SELECT DISTINCT question_id
+            FROM raw_exam_results
+            WHERE exam_id = :exam_id
+        ");
+        $questionsQuery->execute([':exam_id' => $examId]);
+        $examQuestions = $questionsQuery->fetchAll(PDO::FETCH_COLUMN);
+
+        $questionCount = count($examQuestions);
+        if ($questionCount < 2) {
+            return ['cronbach_alpha' => 0, 'avg_inter_item_correlation' => 0, 'question_count' => $questionCount];
+        }
+
+        $correlationMatrix = $this->buildInterItemCorrelationMatrix($examId, $examQuestions);
+        $avgCorrelation = $this->calculateAverageInterItemCorrelation($correlationMatrix);
+        $cronbachAlpha = $this->calculateCronbachAlpha($correlationMatrix, $questionCount);
+
+        return [
+            'cronbach_alpha' => round($cronbachAlpha, 3),
+            'avg_inter_item_correlation' => round($avgCorrelation, 3),
+            'question_count' => $questionCount,
+            'correlation_matrix' => $correlationMatrix
+        ];
+    }
+
+    private function buildInterItemCorrelationMatrix(int $examId, array $questionList): array
+    {
+        $studentAnswersQuery = $this->databaseConnection->prepare("
+            SELECT student_id, question_id, received_score
+            FROM raw_exam_results
+            WHERE exam_id = :exam_id AND received_score IS NOT NULL
+            ORDER BY student_id, question_id
+        ");
+        $studentAnswersQuery->execute([':exam_id' => $examId]);
+        $allAnswers = $studentAnswersQuery->fetchAll(PDO::FETCH_ASSOC);
+
+        $scoresByStudent = [];
+        foreach ($allAnswers as $answerRow) {
+            $studentKey = $answerRow['student_id'];
+            $questionKey = $answerRow['question_id'];
+            if (!isset($scoresByStudent[$studentKey])) {
+                $scoresByStudent[$studentKey] = [];
+            }
+            $scoresByStudent[$studentKey][$questionKey] = (float)$answerRow['received_score'];
+        }
+
+        $commonStudents = [];
+        foreach ($scoresByStudent as $studentKey => $studentScores) {
+            if (count(array_intersect_key($studentScores, array_flip($questionList))) === count($questionList)) {
+                $commonStudents[$studentKey] = $studentScores;
+            }
+        }
+
+        if (count($commonStudents) < 10) {
+            return [];
+        }
+
+        $correlationMatrix = [];
+        foreach ($questionList as $firstQuestion) {
+            $correlationMatrix[$firstQuestion] = [];
+            foreach ($questionList as $secondQuestion) {
+                if ($firstQuestion === $secondQuestion) {
+                    $correlationMatrix[$firstQuestion][$secondQuestion] = 1.0;
+                } else {
+                    $firstScores = array_column($commonStudents, $firstQuestion);
+                    $secondScores = array_column($commonStudents, $secondQuestion);
+                    $correlationMatrix[$firstQuestion][$secondQuestion] = $this->calculatePearsonCorrelation($firstScores, $secondScores);
+                }
+            }
+        }
+
+        return $correlationMatrix;
+    }
+
+    private function calculateAverageInterItemCorrelation(array $correlationMatrix): float
+    {
+        if (empty($correlationMatrix)) {
+            return 0;
+        }
+
+        $correlationSum = 0;
+        $pairCount = 0;
+        $questionIds = array_keys($correlationMatrix);
+
+        for ($i = 0; $i < count($questionIds); $i++) {
+            for ($j = $i + 1; $j < count($questionIds); $j++) {
+                $firstQuestion = $questionIds[$i];
+                $secondQuestion = $questionIds[$j];
+                $correlationSum += $correlationMatrix[$firstQuestion][$secondQuestion];
+                $pairCount++;
+            }
+        }
+
+        return $pairCount > 0 ? $correlationSum / $pairCount : 0;
+    }
+
+    private function calculateCronbachAlpha(array $correlationMatrix, int $itemCount): float
+    {
+        if (empty($correlationMatrix) || $itemCount < 2) {
+            return 0;
+        }
+
+        $avgCorrelation = $this->calculateAverageInterItemCorrelation($correlationMatrix);
+
+        $cronbachAlpha = ($itemCount * $avgCorrelation) / (1 + ($itemCount - 1) * $avgCorrelation);
+
+        return max(0, min(1, $cronbachAlpha));
     }
 }

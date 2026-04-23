@@ -7,11 +7,24 @@
 - **Semantic Analysis** - семантический поиск дубликатов
 - **Импорт данных** - загрузка силлабусов и результатов экзаменов
 
+## Запуск через Docker 
+ 
+ 
+```bash
+docker-compose up -d
+```
+
+- **app** - PHP приложение (http://localhost:8080)
+- **db** - MySQL 8.0 (порт 3307)
+- **embeddings** - Python API для эмбеддингов (порт 8000)
+ 
+
+## Локальная установка
 
 - **PHP:** 8.0 +
 - **MySQL/MariaDB:** 5.7 +
 - **Web-сервер:** пример Apache (XAMPP)
-- **Python:** 3.8+  
+- **Python:** 3.8+
 - **Расширения PHP:**
   - pdo_mysql
   - mbstring
@@ -28,17 +41,19 @@
    - Логин: `superadmin`
    - Пароль: `superadmin123`
 
- 
-1. **Установка Python зависимостей:** для эмбедингов, семантика + лучший импорт силлабусов
-   ```bash
-   cd \ai_standalone\python_services
-   python embeddings_api.py
-   ```
-   
-<img src="img.png" width="800">
+### Python сервис
 
-<img src="img_1.png" width="800">
+Для эмбеддингов, семантики и импорта силлабусов:
+```bash
+cd ai_standalone/python_services
+pip install -r requirements.txt
+python embeddings_api.py
+```
 
-<img src="img_2.png" width="800">
+<img src="images/img.png" width="800">
+
+<img src="images/img_1.png" width="800">
+
+<img src="images/img_2.png" width="800">
  
 

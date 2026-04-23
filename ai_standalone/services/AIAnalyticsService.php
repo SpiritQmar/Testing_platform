@@ -6,10 +6,18 @@ final class AIAnalyticsService
 {
     public const DEMO_IMPORT_FILENAME = 'ai_synthetic_demo.seed';
     private ?int $currentImportId = null;
+    private RuleClassifierService $ruleClassifier;
+    private int $minStudentsForDiscrimination = 10;
 
     public function __construct(private PDO $databaseConnection, ?int $importId = null)
     {
         $this->currentImportId = $importId;
+        $this->ruleClassifier = new RuleClassifierService($databaseConnection);
+    }
+
+    public function setMinStudentsForDiscrimination(int $value): void
+    {
+        $this->minStudentsForDiscrimination = max(2, $value);
     }
 
     public function getCurrentImportId(): ?int
@@ -182,39 +190,37 @@ final class AIAnalyticsService
         $importIdentifier = $this->currentImportId;
         if ($importIdentifier === null) return [];
 
-        $studentDisciplineScores = $this->studentDisciplineTotals($importIdentifier);
-        if (count($studentDisciplineScores) < 8) return [];
-
-        usort($studentDisciplineScores, static fn ($a, $b) => $a['total'] <=> $b['total']);
-        $totalStudentCount = count($studentDisciplineScores);
-        $extremeGroupSize = max(2, (int)ceil($totalStudentCount * 0.27));
-        $lowPerformingStudentIds = array_column(array_slice($studentDisciplineScores, 0, $extremeGroupSize), 'student_id');
-        $highPerformingStudentIds = array_column(array_slice($studentDisciplineScores, -$extremeGroupSize, $extremeGroupSize), 'student_id');
-        $lowPerformingIdsString = implode(',', array_map('intval', $lowPerformingStudentIds));
-        $highPerformingIdsString = implode(',', array_map('intval', $highPerformingStudentIds));
-
-        $sqlQuery = "
-            SELECT question_id,
-                AVG(CASE WHEN student_id IN ($highPerformingIdsString) THEN received_score END) AS hi,
-                AVG(CASE WHEN student_id IN ($lowPerformingIdsString) THEN received_score END) AS lo
+        $questionsQuery = $this->databaseConnection->prepare("
+            SELECT DISTINCT question_id
             FROM raw_exam_results
-            WHERE import_id = :imp AND question_id IS NOT NULL AND received_score IS NOT NULL
-            GROUP BY question_id
-        ";
-        $queryStatement = $this->databaseConnection->prepare($sqlQuery);
-        $queryStatement->execute([':imp' => $importIdentifier]);
+            WHERE import_id = :import_id AND question_id IS NOT NULL
+        ");
+        $questionsQuery->execute([':import_id' => $importIdentifier]);
+        $questionList = $questionsQuery->fetchAll(PDO::FETCH_COLUMN);
+
         $discriminationResults = [];
-        while ($resultRow = $queryStatement->fetch(PDO::FETCH_ASSOC)) {
-            $highGroupAverage = (float)($resultRow['hi'] ?? 0);
-            $lowGroupAverage = (float)($resultRow['lo'] ?? 0);
-            $discriminationValue = $highGroupAverage - $lowGroupAverage;
-            $discriminationLabel = $discriminationValue >= 12 ? 'strong' : ($discriminationValue >= 6 ? 'medium' : 'weak');
+        foreach ($questionList as $questionId) {
+            $qualityMetrics = $this->ruleClassifier->calculateQuestionQualityMetrics((int)$questionId);
+
+            if (($qualityMetrics['total_attempts'] ?? 0) < $this->minStudentsForDiscrimination) {
+                continue;
+            }
+
+            $correlationValue = $qualityMetrics['discrimination_index'];
+            $discriminationLabel = 'weak';
+            if ($correlationValue >= 0.4) {
+                $discriminationLabel = 'strong';
+            } elseif ($correlationValue >= 0.2) {
+                $discriminationLabel = 'medium';
+            }
+
             $discriminationResults[] = [
-                'question_id' => (int)$resultRow['question_id'],
-                'discrimination' => round($discriminationValue, 2),
+                'question_id' => (int)$questionId,
+                'discrimination' => $correlationValue,
                 'label' => $discriminationLabel,
             ];
         }
+
         return $discriminationResults;
     }
 
@@ -285,10 +291,12 @@ final class AIAnalyticsService
         return $denominator > 1e-9 ? $numerator / $denominator : 0.0;
     }
 
-    public function getStudentRiskPatterns(): array
+    public function getStudentRiskPatterns(int $page = 1, int $perPage = 50): array
     {
         $importIdentifier = $this->currentImportId;
         if ($importIdentifier === null) return [];
+
+        $offset = ($page - 1) * $perPage;
 
         $queryStatement = $this->databaseConnection->prepare(
             "SELECT student_id, AVG(received_score) AS avg_item,
@@ -297,9 +305,14 @@ final class AIAnalyticsService
                     COUNT(*) AS n_items
              FROM raw_exam_results
              WHERE import_id = :imp AND student_id IS NOT NULL AND received_score IS NOT NULL
-             GROUP BY student_id"
+             GROUP BY student_id
+             LIMIT :limit OFFSET :offset"
         );
-        $queryStatement->execute([':imp' => $importIdentifier]);
+        $queryStatement->bindValue(':imp', $importIdentifier);
+        $queryStatement->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $queryStatement->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $queryStatement->execute();
+
         $studentDisciplineScores = $this->studentDisciplineTotals($importIdentifier);
         $scoreMapping = [];
         foreach ($studentDisciplineScores as $studentData) { $scoreMapping[$studentData['student_id']] = $studentData['total']; }
@@ -334,6 +347,21 @@ final class AIAnalyticsService
             ];
         }
         return $riskAnalysisResults;
+    }
+
+    public function getStudentRiskPatternsCount(): int
+    {
+        $importIdentifier = $this->currentImportId;
+        if ($importIdentifier === null) return 0;
+
+        $queryStatement = $this->databaseConnection->prepare(
+            "SELECT COUNT(DISTINCT student_id) as total
+             FROM raw_exam_results
+             WHERE import_id = :imp AND student_id IS NOT NULL AND received_score IS NOT NULL"
+        );
+        $queryStatement->execute([':imp' => $importIdentifier]);
+        $result = $queryStatement->fetch(PDO::FETCH_ASSOC);
+        return (int)($result['total'] ?? 0);
     }
 
     private static function calculateMedian(array $values): float
@@ -536,5 +564,50 @@ final class AIAnalyticsService
         }
 
         return $integrityWarnings;
+    }
+
+    public function getExamReliabilityMetrics(): array
+    {
+        $importIdentifier = $this->currentImportId;
+        if ($importIdentifier === null) {
+            return ['cronbach_alpha' => 0, 'avg_inter_item_correlation' => 0, 'question_count' => 0, 'interpretation' => 'Нет данных'];
+        }
+
+        $examDataQuery = $this->databaseConnection->prepare("
+            SELECT DISTINCT exam_id
+            FROM raw_exam_results
+            WHERE import_id = :import_id AND exam_id IS NOT NULL
+            LIMIT 1
+        ");
+        $examDataQuery->execute([':import_id' => $importIdentifier]);
+        $examRow = $examDataQuery->fetch(PDO::FETCH_ASSOC);
+
+        if (!$examRow || !$examRow['exam_id']) {
+            return ['cronbach_alpha' => 0, 'avg_inter_item_correlation' => 0, 'question_count' => 0, 'interpretation' => 'Нет данных об экзамене'];
+        }
+
+        $reliabilityData = $this->ruleClassifier->calculateExamReliability((int)$examRow['exam_id']);
+
+        $alpha = $reliabilityData['cronbach_alpha'];
+        $interpretation = 'Недостаточно данных';
+        if ($alpha >= 0.9) {
+            $interpretation = 'Отличная надежность';
+        } elseif ($alpha >= 0.8) {
+            $interpretation = 'Хорошая надежность';
+        } elseif ($alpha >= 0.7) {
+            $interpretation = 'Приемлемая надежность';
+        } elseif ($alpha >= 0.6) {
+            $interpretation = 'Сомнительная надежность';
+        } elseif ($alpha > 0) {
+            $interpretation = 'Ненадежный экзамен - требуется ревизия вопросов';
+        }
+
+        return [
+            'cronbach_alpha' => $alpha,
+            'avg_inter_item_correlation' => $reliabilityData['avg_inter_item_correlation'],
+            'question_count' => $reliabilityData['question_count'],
+            'interpretation' => $interpretation,
+            'correlation_matrix' => $reliabilityData['correlation_matrix'] ?? []
+        ];
     }
 }
