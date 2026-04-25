@@ -32,12 +32,7 @@ docker-compose up -d
 - **MySQL/MariaDB:** 5.7 +
 - **Web-сервер:** пример Apache (XAMPP)
 - **Python:** 3.8+
-- **Расширения PHP:**
-  - pdo_mysql
-  - mbstring
-  - json
-  - zip
-  - gd
+- **Расширения PHP:** pdo_mysql, mbstring, json, zip, gd
 
 ### Настройки
 

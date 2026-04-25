@@ -202,18 +202,131 @@ function showConfirm(message, onConfirm, form) {
   const modalMessage = document.getElementById('confirmModalMessage');
   const confirmBtn = document.getElementById('confirmModalConfirm');
   const cancelBtn = document.getElementById('confirmModalCancel');
-  
+
   modalMessage.textContent = message;
   modal.classList.add('show');
-  
+
   confirmBtn.onclick = function() {
     modal.classList.remove('show');
     onConfirm(form);
   };
-  
+
   cancelBtn.onclick = function() {
     modal.classList.remove('show');
   };
+}
+
+function showClearConfirm() {
+  const form = document.getElementById('clearDataFormBottom');
+  const checkboxes = form.querySelectorAll('.clear-data-options .clear-data-checkbox:checked');
+
+  if (checkboxes.length === 0) {
+    alert('Выберите хотя бы один тип данных для очистки');
+    return;
+  }
+
+  const selectedItems = [];
+  checkboxes.forEach(cb => {
+    const label = cb.closest('.clear-data-option').querySelector('.clear-data-option-text').textContent;
+    selectedItems.push(label);
+  });
+
+  const message = 'Вы уверены, что хотите удалить следующие данные?\n\n' + selectedItems.join('\n');
+
+  const modal = document.getElementById('confirmModal');
+  const modalTitle = document.getElementById('confirmModalTitle');
+  const modalMessage = document.getElementById('confirmModalMessage');
+  const confirmBtn = document.getElementById('confirmModalConfirm');
+  const cancelBtn = document.getElementById('confirmModalCancel');
+
+  modalTitle.textContent = '<?= t('delete_confirmation_title') ?>';
+
+  let itemsHtml = '<div class="confirm-modal-items">';
+  selectedItems.forEach(item => {
+    itemsHtml += '<div class="confirm-modal-item"><i class="bi bi-x-circle"></i> ' + item + '</div>';
+  });
+  itemsHtml += '</div>';
+
+  modalMessage.innerHTML = '<strong><?= t('will_be_deleted') ?></strong>' + itemsHtml;
+  modal.classList.add('show');
+
+  confirmBtn.onclick = function() {
+    modal.classList.remove('show');
+    form.submit();
+  };
+
+  cancelBtn.onclick = function() {
+    modal.classList.remove('show');
+  };
+}
+
+function updateUploadBox(input, type) {
+  const box = input.parentElement;
+  const text = box.querySelector('.import-upload-text');
+  const icon = box.querySelector('.import-upload-icon');
+
+  if (input.files && input.files[0]) {
+    box.classList.add('has-file');
+    text.textContent = input.files[0].name;
+    text.style.color = '#059669';
+    icon.innerHTML = '<i class="bi bi-check-circle-fill"></i>';
+    icon.style.color = '#10b981';
+  }
+}
+
+function setupDragAndDrop() {
+  const uploadBoxes = document.querySelectorAll('.import-upload-box');
+
+  uploadBoxes.forEach(box => {
+    box.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      box.style.borderColor = '#3b82f6';
+      box.style.background = 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)';
+    });
+
+    box.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!box.classList.contains('has-file')) {
+        box.style.borderColor = '#cbd5e1';
+        box.style.background = 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)';
+      }
+    });
+
+    box.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const input = box.querySelector('input[type="file"]');
+      if (input && e.dataTransfer.files && e.dataTransfer.files[0]) {
+        input.files = e.dataTransfer.files;
+        updateUploadBox(input);
+      }
+    });
+  });
+}
+
+function setupSelectAll() {
+  const selectAllBtn = document.getElementById('clearDataSelectAll');
+  if (!selectAllBtn) return;
+
+  const optionCheckboxes = document.querySelectorAll('.clear-data-options .clear-data-checkbox');
+
+  selectAllBtn.addEventListener('click', function() {
+    const allChecked = Array.from(optionCheckboxes).every(c => c.checked);
+    optionCheckboxes.forEach(cb => {
+      cb.checked = !allChecked;
+    });
+  });
+
+  optionCheckboxes.forEach(cb => {
+    cb.addEventListener('change', function(e) {
+      e.stopPropagation();
+      const allChecked = Array.from(optionCheckboxes).every(c => c.checked);
+      selectAllBtn.innerHTML = allChecked ? '<i class="bi bi-x-lg"></i> <?= t('deselect_all') ?>' : '<i class="bi bi-check-all"></i> <?= t('select_all') ?>';
+    });
+  });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -223,6 +336,9 @@ document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('confirmModal').classList.remove('show');
     };
   }
+
+  setupDragAndDrop();
+  setupSelectAll();
 });
 
 function refreshSyllabusTopics() {
@@ -258,8 +374,8 @@ function refreshSyllabusTopics() {
 .ai-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; border-radius: 12px; margin-bottom: 40px; }
 .ai-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
 .ai-header p { font-size: 16px; opacity: 0.9; }
-.ai-nav { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 40px; }
-.ai-nav-btn { flex: 1; min-width: 100px; padding: 12px 20px; border: 2px solid #e2e8f0; border-radius: 8px; background: #f1f5f9; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); font-weight: 500; font-size: 14px; text-decoration: none; color: #1a1d21; display: inline-block; text-align: center; }
+.ai-nav { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 40px; justify-content: center; }
+.ai-nav-btn { flex: 1; min-width: 100px; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 8px; background: #f1f5f9; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); font-weight: 500; font-size: 13px; text-decoration: none; color: #1a1d21; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.3; }
 .ai-nav-btn:hover { background: #e2e8f0; transform: translateY(-2px); border-color: #cbd5e1; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-decoration: none; color: #1a1d21; }
 .ai-nav-btn:active { transform: translateY(0); }
 .ai-nav-btn.active { background: #667eea; color: white; border-color: #667eea; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3); text-decoration: none; }
@@ -1195,56 +1311,7 @@ table tbody tr:last-child td { border-bottom: none; }
       <div class="alert alert-danger"><?= h($importError) ?></div>
     <?php endif; ?>
     
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <div class="dropdown">
-
-        <div class="dropdown-menu p-3" style="min-width: 250px;">
-          <form method="post">
-            <?= csrf_input() ?>
-            <input type="hidden" name="clear_data" value="1">
-            <div class="mb-2">
-              <input type="checkbox" name="clear_options[]" value="exam_results" id="clear_exam_results" class="form-check-input">
-              <label for="clear_exam_results" class="form-check-label"><?= t('exam_results') ?></label>
-            </div>
-            <div class="mb-2">
-              <input type="checkbox" name="clear_options[]" value="syllabuses" id="clear_syllabuses" class="form-check-input">
-              <label for="clear_syllabuses" class="form-check-label"><?= t('syllabuses') ?></label>
-            </div>
-            <div class="mb-2">
-              <input type="checkbox" name="clear_options[]" value="questions" id="clear_questions" class="form-check-input">
-              <label for="clear_questions" class="form-check-label"><?= t('questions') ?></label>
-            </div>
-            <div class="mb-2">
-              <input type="checkbox" name="clear_options[]" value="students" id="clear_students" class="form-check-input">
-              <label for="clear_students" class="form-check-label"><?= t('students') ?></label>
-            </div>
-            <div class="mb-2">
-              <input type="checkbox" name="clear_options[]" value="evaluation_criteria" id="clear_evaluation_criteria" class="form-check-input">
-              <label for="clear_evaluation_criteria" class="form-check-label"><?= t('evaluation_criteria') ?></label>
-            </div>
-            <div class="mb-2">
-              <input type="checkbox" name="clear_options[]" value="evaluation_details" id="clear_evaluation_details" class="form-check-input">
-              <label for="clear_evaluation_details" class="form-check-label"><?= t('evaluation_details') ?></label>
-            </div>
-            <div class="mb-2">
-              <input type="checkbox" name="clear_options[]" value="student_answers" id="clear_student_answers" class="form-check-input">
-              <label for="clear_student_answers" class="form-check-label"><?= t('student_answers') ?></label>
-            </div>
-            <div class="mb-2">
-              <input type="checkbox" name="clear_options[]" value="work_mapping" id="clear_work_mapping" class="form-check-input">
-              <label for="clear_work_mapping" class="form-check-label">Work Mapping</label>
-            </div>
-            <div class="mb-2">
-              <input type="checkbox" name="clear_options[]" value="uploads" id="clear_uploads" class="form-check-input">
-              <label for="clear_uploads" class="form-check-label"><?= t('uploaded_files') ?></label>
-            </div>
-            <button type="submit" class="btn btn-danger btn-sm w-100 mt-2" onclick="showConfirm('<?= t('clear_data_confirm') ?>', function(form) { form.submit(); }, this.form); return false;"><?= t('clear_selected') ?></button>
-          </form>
-        </div>
-      </div>
-    </div>
-    
-    <div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px;">
+    <div class="import-tabs">
       <button onclick="showImportTab('syllabus')" id="import-btn-syllabus" class="chart-button active"><?= t('syllabus_import') ?></button>
       <button onclick="showImportTab('ods')" id="import-btn-ods" class="chart-button"><?= t('ods_exam_results') ?></button>
       <button onclick="showImportTab('syllabus-link')" id="import-btn-syllabus-link" class="chart-button"><?= t('link_syllabus_questions') ?></button>
@@ -1253,63 +1320,72 @@ table tbody tr:last-child td { border-bottom: none; }
       <button onclick="showImportTab('details')" id="import-btn-details" class="chart-button"><?= t('evaluation_details') ?></button>
       <button onclick="showImportTab('answers')" id="import-btn-answers" class="chart-button"><?= t('student_answers') ?></button>
     </div>
-    
-    <div id="import-syllabus" style="display: block;">
-        <form method="post" enctype="multipart/form-data" class="mb-4">
-          <?= csrf_input() ?>
-          
-          <div class="row g-3">
-            <div class="col-md-8">
-              <label class="form-label fw-semibold"><?= t('discipline') ?></label>
-              <input type="text" name="discipline_name" class="form-control" required placeholder="e.g.: Pediatrics">
+
+    <div class="import-layout">
+      <div class="import-left">
+        <div id="import-syllabus" style="display: block;">
+          <form method="post" enctype="multipart/form-data">
+            <?= csrf_input() ?>
+            
+            <div class="import-upload-box" onclick="document.getElementById('syllabusFileInput').click()">
+              <div class="import-upload-icon">
+                <i class="bi bi-cloud-arrow-up"></i>
+              </div>
+              <p class="import-upload-text">Drag & Drop files here...</p>
+              <p class="import-upload-subtext">.DOCX, .PDF, .TXT, .ODT</p>
+              <button type="button" class="import-browse-btn">Or browse files</button>
+              <input type="file" name="syllabus_file" id="syllabusFileInput" accept=".docx,.doc,.pdf,.txt,.odt" required style="display: none;" onchange="updateUploadBox(this, 'syllabus')">
             </div>
-            <div class="col-md-4">
-              <label class="form-label fw-semibold"><?= t('course') ?></label>
-              <select name="course_number" class="form-select">
-                <option value="1">1st year</option>
-                <option value="2">2nd year</option>
-                <option value="3" selected>3rd year</option>
-                <option value="4">4th year</option>
-                <option value="5">5th year</option>
-              </select>
+
+            <div class="import-fields">
+              <div class="import-field">
+                <label class="form-label"><?= t('discipline') ?></label>
+                <input type="text" name="discipline_name" class="form-control" required placeholder="e.g.: Pediatrics">
+              </div>
+              <div class="import-field">
+                <label class="form-label"><?= t('course') ?></label>
+                <select name="course_number" class="form-select">
+                  <option value="1">1 курс</option>
+                  <option value="2">2 курс</option>
+                  <option value="3" selected>3 курс</option>
+                  <option value="4">4 курс</option>
+                  <option value="5">5 курс</option>
+                </select>
+              </div>
             </div>
-            <div class="col-12">
-              <label class="form-label fw-semibold"><?= t('syllabus_file') ?></label>
-              <input type="file" name="syllabus_file" class="form-control" accept=".docx,.doc,.pdf,.txt,.odt" required>
-              <small class="text-muted"><?= t('formats') ?></small>
-            </div>
-            <div class="col-12">
-              <button type="submit" class="btn btn-primary"><?= t('upload_process') ?></button>
-            </div>
-          </div>
-        </form>
-    </div>
-    
-    <div id="import-ods" style="display: none;">
-        <form method="post" enctype="multipart/form-data" class="mb-4">
-          <?= csrf_input() ?>
-          
-          <div class="mb-3">
-            <label class="form-label fw-semibold"><?= t('ods_file') ?></label>
-            <input type="file" name="ods_file" class="form-control" accept=".ods,.csv" required>
-            <small class="text-muted"><?= t('exam_export_file') ?> (ODS or CSV)</small>
-          </div>
-          <button type="submit" class="btn btn-primary"><?= t('convert_import') ?></button>
-        </form>
-        
-        <div class="text-muted small">
-          <p><strong><?= t('converter_description') ?></strong></p>
-          <ul class="mb-0">
-            <li><?= t('converter_1') ?></li>
-            <li><?= t('converter_2') ?></li>
-            <li><?= t('converter_3') ?></li>
-            <li><?= t('converter_4') ?></li>
-            <li><?= t('converter_5') ?></li>
-          </ul>
+
+            <button type="submit" class="import-submit-btn"><?= t('upload_process') ?></button>
+          </form>
         </div>
-    </div>
-    
-    <div id="import-syllabus-link" style="display: none;">
+
+        <div id="import-ods" style="display: none;">
+          <form method="post" enctype="multipart/form-data">
+            <?= csrf_input() ?>
+            
+            <div class="import-upload-box" onclick="document.getElementById('odsFileInput').click()">
+              <div class="import-upload-icon">
+                <i class="bi bi-file-earmark-spreadsheet"></i>
+              </div>
+              <p class="import-upload-text">Drag & Drop files here...</p>
+              <p class="import-upload-subtext">.ODS, .CSV</p>
+              <button type="button" class="import-browse-btn">Or browse files</button>
+              <input type="file" name="ods_file" id="odsFileInput" accept=".ods,.csv" required style="display: none;" onchange="updateUploadBox(this, 'ods')">
+            </div>
+
+            <button type="submit" class="import-submit-btn"><?= t('convert_import') ?></button>
+          </form>
+          
+          <div class="text-muted small mt-4">
+            <p><strong><?= t('converter_description') ?></strong></p>
+            <ul class="mb-0">
+              <li><?= t('converter_1') ?></li>
+              <li><?= t('converter_2') ?></li>
+              <li><?= t('converter_3') ?></li>
+            </ul>
+          </div>
+        </div>
+
+        <div id="import-syllabus-link" style="display: none;">
         <div class="alert alert-info">
           <strong><?= t('select_questions') ?></strong>
           <ul class="mb-0 mt-2">
@@ -1479,46 +1555,63 @@ table tbody tr:last-child td { border-bottom: none; }
     </div>
     
     <div id="import-criteria" style="display: none;">
-        <form method="post" enctype="multipart/form-data" action="imports/import_evaluation_criteria.php" class="mb-4">
+        <form method="post" enctype="multipart/form-data" action="imports/import_evaluation_criteria.php">
           <?= csrf_input() ?>
-          <div class="mb-3">
-            <label class="form-label fw-semibold"><?= t('evaluation_criteria_file') ?></label>
-            <input type="file" name="criteria_file" class="form-control" accept=".csv" required>
-            <small class="text-muted">Columns: ID, Қазақша, Русский, English, Вес</small>
+          <div class="import-upload-box" onclick="document.getElementById('criteriaFileInput').click()">
+            <div class="import-upload-icon">
+              <i class="bi bi-file-earmark-text"></i>
+            </div>
+            <p class="import-upload-text">Drag & Drop files here...</p>
+            <p class="import-upload-subtext">.CSV (ID, Қазақша, Русский, English, Вес)</p>
+            <button type="button" class="import-browse-btn">Or browse files</button>
+            <input type="file" name="criteria_file" id="criteriaFileInput" accept=".csv" required style="display: none;" onchange="updateUploadBox(this, 'criteria')">
           </div>
-          <button type="submit" class="btn btn-primary"><?= t('import_criteria') ?></button>
+          <button type="submit" class="import-submit-btn"><?= t('import_criteria') ?></button>
         </form>
     </div>
     
     <div id="import-details" style="display: none;">
-        <form method="post" enctype="multipart/form-data" action="imports/import_evaluation_details.php" class="mb-4">
+        <form method="post" enctype="multipart/form-data" action="imports/import_evaluation_details.php">
           <?= csrf_input() ?>
-          <div class="mb-3">
-            <label class="form-label fw-semibold"><?= t('evaluation_details_file') ?></label>
-            <input type="file" name="details_file" class="form-control" accept=".csv" required>
-            <small class="text-muted">Columns: Код работы, ID критерия, Оценка по 100 шкале</small>
+          <div class="import-upload-box" onclick="document.getElementById('detailsFileInput').click()">
+            <div class="import-upload-icon">
+              <i class="bi bi-file-earmark-bar-graph"></i>
+            </div>
+            <p class="import-upload-text">Drag & Drop files here...</p>
+            <p class="import-upload-subtext">.CSV (Код работы, ID критерия, Оценка)</p>
+            <button type="button" class="import-browse-btn">Or browse files</button>
+            <input type="file" name="details_file" id="detailsFileInput" accept=".csv" required style="display: none;" onchange="updateUploadBox(this, 'details')">
           </div>
-          <button type="submit" class="btn btn-primary"><?= t('import_details') ?></button>
+          <button type="submit" class="import-submit-btn"><?= t('import_details') ?></button>
         </form>
     </div>
     
     <div id="import-answers" style="display: none;">
-        <form method="post" enctype="multipart/form-data" action="imports/import_student_answers.php" class="mb-4">
+        <form method="post" enctype="multipart/form-data" action="imports/import_student_answers.php">
           <?= csrf_input() ?>
-          <div class="mb-3">
-            <label class="form-label fw-semibold"><?= t('student_answers_file') ?></label>
-            <input type="file" name="answers_file" class="form-control" accept=".csv" required>
-            <small class="text-muted">Columns: Код работы, Язык, Вопрос, Ответ в BASE64, ID проверяющего преподавателя, Итоговая оценка, Комментарий преподавателя к оценке, Штраф за плагиат</small>
+          <div class="import-upload-box" onclick="document.getElementById('answersFileInput').click()">
+            <div class="import-upload-icon">
+              <i class="bi bi-file-earmark-person"></i>
+            </div>
+            <p class="import-upload-text">Drag & Drop files here...</p>
+            <p class="import-upload-subtext">.CSV (Код работы, Язык, Вопрос, Ответ и др.)</p>
+            <button type="button" class="import-browse-btn">Or browse files</button>
+            <input type="file" name="answers_file" id="answersFileInput" accept=".csv" required style="display: none;" onchange="updateUploadBox(this, 'answers')">
           </div>
-          <button type="submit" class="btn btn-primary"><?= t('import_answers') ?></button>
+          <button type="submit" class="import-submit-btn"><?= t('import_answers') ?></button>
         </form>
+        </div>
+      </div>
     </div>
-    
+
     <div class="row g-4">
-      <div class="col-md-6">
-        <div class="card">
-          <div class="card-header bg-primary text-white"><?= t('import_statistics') ?></div>
-          <div class="card-body">
+      <div class="col-md-4">
+        <div class="stats-card">
+          <div class="stats-card-header">
+            <i class="bi bi-bar-chart-line"></i>
+            <?= t('import_statistics') ?>
+          </div>
+          <div class="stats-card-body">
             <?php
             try {
               $stmt = $pdo->query("SELECT COUNT(*) as count FROM user_syllabuses");
@@ -1534,42 +1627,131 @@ table tbody tr:last-child td { border-bottom: none; }
                 $totalImports = 0;
             }
             ?>
-            <div class="stats-grid">
-              <div class="stat-item">
-                <div class="stat-value"><?= $totalSyllabuses ?></div>
-                <div class="stat-label"><?= t('syllabuses') ?></div>
+            <div class="stats-items">
+              <div class="stat-item-modern stat-item-syllabuses">
+                <div class="stat-item-icon">
+                  <i class="bi bi-file-earmark-text"></i>
+                </div>
+                <div class="stat-item-content">
+                  <div class="stat-item-value"><?= $totalSyllabuses ?></div>
+                  <div class="stat-item-label"><?= t('syllabuses') ?></div>
+                </div>
               </div>
-              <div class="stat-item">
-                <div class="stat-value"><?= $totalDisciplines ?></div>
-                <div class="stat-label"><?= t('disciplines') ?></div>
+              <div class="stat-item-modern stat-item-disciplines">
+                <div class="stat-item-icon">
+                  <i class="bi bi-book"></i>
+                </div>
+                <div class="stat-item-content">
+                  <div class="stat-item-value"><?= $totalDisciplines ?></div>
+                  <div class="stat-item-label"><?= t('disciplines') ?></div>
+                </div>
               </div>
-              <div class="stat-item">
-                <div class="stat-value"><?= $totalImports ?></div>
-                <div class="stat-label"><?= t('data_imports') ?></div>
+              <div class="stat-item-modern stat-item-imports">
+                <div class="stat-item-icon">
+                  <i class="bi bi-download"></i>
+                </div>
+                <div class="stat-item-content">
+                  <div class="stat-item-value"><?= $totalImports ?></div>
+                  <div class="stat-item-label"><?= t('data_imports') ?></div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-      <div class="col-md-6">
-        <div class="card">
-          <div class="card-header bg-info text-white"><?= t('recent_syllabuses') ?></div>
-          <div class="card-body">
+      <div class="col-md-4">
+        <div class="recent-files-card">
+          <div class="recent-files-header">
+            <i class="bi bi-clock-history"></i>
+            <?= t('recent_files') ?>
+          </div>
+          <div class="recent-files-body">
             <?php if (empty($existingSyllabuses)): ?>
-              <p class="text-muted"><?= t('no_syllabuses') ?></p>
+              <div class="recent-files-empty">
+                <i class="bi bi-inbox"></i>
+                <p><?= t('no_syllabuses') ?></p>
+              </div>
             <?php else: ?>
-              <div class="list-group list-group-flush">
+              <div class="recent-files-list">
                 <?php foreach ($existingSyllabuses as $syl): ?>
-                  <div class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                      <strong><?= h($syl['discipline_name']) ?></strong>
-                      <br><small class="text-muted"><?= h($syl['file_name']) ?></small>
+                  <div class="recent-file-item">
+                    <div class="recent-file-icon">
+                      <i class="bi bi-file-earmark-text"></i>
                     </div>
-                    <span class="badge bg-<?= $syl['status'] === 'processed' ? 'success' : 'warning' ?>"><?= h($syl['status']) ?></span>
+                    <div class="recent-file-info">
+                      <div class="recent-file-name"><?= h($syl['discipline_name']) ?></div>
+                      <div class="recent-file-filename"><?= h($syl['file_name']) ?></div>
+                    </div>
+                    <div class="recent-file-status">
+                      <span class="status-badge status-<?= $syl['status'] === 'processed' ? 'success' : 'warning' ?>">
+                        <i class="bi bi-<?= $syl['status'] === 'processed' ? 'check-circle' : 'clock' ?>"></i>
+                        <?= h($syl['status']) ?>
+                      </span>
+                    </div>
                   </div>
                 <?php endforeach; ?>
               </div>
             <?php endif; ?>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="clear-data-card">
+          <div class="clear-data-header">
+            <i class="bi bi-trash3"></i>
+            <?= t('clear_data') ?>
+          </div>
+          <div class="clear-data-body">
+            <p class="clear-data-desc"><?= t('clear_data_desc') ?></p>
+            <form method="post" id="clearDataFormBottom">
+              <?= csrf_input() ?>
+              <input type="hidden" name="clear_data" value="1">
+              <button type="button" id="clearDataSelectAll" class="clear-data-select-all-btn">
+                <i class="bi bi-check-all"></i>
+                <?= t('select_all') ?>
+              </button>
+              <div class="clear-data-options">
+                <label class="clear-data-option">
+                  <input type="checkbox" name="clear_options[]" value="exam_results" class="clear-data-checkbox">
+                  <span class="clear-data-option-text"><?= t('exam_results') ?></span>
+                </label>
+                <label class="clear-data-option">
+                  <input type="checkbox" name="clear_options[]" value="syllabuses" class="clear-data-checkbox">
+                  <span class="clear-data-option-text"><?= t('syllabuses') ?></span>
+                </label>
+                <label class="clear-data-option">
+                  <input type="checkbox" name="clear_options[]" value="questions" class="clear-data-checkbox">
+                  <span class="clear-data-option-text"><?= t('questions') ?></span>
+                </label>
+                <label class="clear-data-option">
+                  <input type="checkbox" name="clear_options[]" value="students" class="clear-data-checkbox">
+                  <span class="clear-data-option-text"><?= t('students') ?></span>
+                </label>
+                <label class="clear-data-option">
+                  <input type="checkbox" name="clear_options[]" value="evaluation_criteria" class="clear-data-checkbox">
+                  <span class="clear-data-option-text"><?= t('evaluation_criteria') ?></span>
+                </label>
+                <label class="clear-data-option">
+                  <input type="checkbox" name="clear_options[]" value="evaluation_details" class="clear-data-checkbox">
+                  <span class="clear-data-option-text"><?= t('evaluation_details') ?></span>
+                </label>
+                <label class="clear-data-option">
+                  <input type="checkbox" name="clear_options[]" value="student_answers" class="clear-data-checkbox">
+                  <span class="clear-data-option-text"><?= t('student_answers') ?></span>
+                </label>
+                <label class="clear-data-option">
+                  <input type="checkbox" name="clear_options[]" value="work_mapping" class="clear-data-checkbox">
+                  <span class="clear-data-option-text"><?= t('work_mapping') ?></span>
+                </label>
+                <label class="clear-data-option">
+                  <input type="checkbox" name="clear_options[]" value="uploads" class="clear-data-checkbox">
+                  <span class="clear-data-option-text"><?= t('uploaded_files') ?></span>
+                </label>
+              </div>
+              <button type="button" class="clear-data-submit" onclick="showClearConfirm(); return false;">
+                <i class="bi bi-trash3"></i> <?= t('clear_selected') ?>
+              </button>
+            </form>
           </div>
         </div>
       </div>
@@ -1990,7 +2172,8 @@ table tbody tr:last-child td { border-bottom: none; }
 
   <div id="section-semantic" class="ai-section <?= $section === 'semantic' ? 'active' : '' ?>">
     <div class="table-container">
-      <h3 class="h5 mb-3">Semantic Analysis</h3>
+      <h3 class="h5 mb-3"><?= t('semantic_analysis') ?></h3>
+      <p class="text-muted small mb-3"><?= t('semantic_desc') ?? 'Semantic analysis of questions using embeddings and vector representations' ?></p>
       <?php if ($importId !== null): ?>
         <div class="mb-4">
             <canvas id="semanticChartTab" style="max-height: 300px;"></canvas>
@@ -3229,11 +3412,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <div id="confirmModal" class="confirm-modal">
   <div class="confirm-modal-content">
-    <div class="confirm-modal-title"><?= t('confirmation') ?></div>
+    <div class="confirm-modal-title" id="confirmModalTitle"><?= t('confirmation') ?></div>
     <div class="confirm-modal-message" id="confirmModalMessage"></div>
     <div class="confirm-modal-buttons">
-      <button id="confirmModalCancel" class="confirm-modal-btn confirm-modal-btn-cancel"><?= t('cancel') ?></button>
       <button id="confirmModalConfirm" class="confirm-modal-btn confirm-modal-btn-confirm"><?= t('confirm') ?></button>
+      <button id="confirmModalCancel" class="confirm-modal-btn confirm-modal-btn-cancel"><?= t('cancel') ?></button>
     </div>
   </div>
 </div>
