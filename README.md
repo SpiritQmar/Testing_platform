@@ -1,10 +1,17 @@
 # AI Analytics - Exam Quality Analyzer
 
+**Language / Тіл / Language:**
+
+[🇷🇺 Русский](README.ru.md) | [en English](README.en.md) | [🇰🇿 Қазақша](README.kz.md)
+
+
 - **Валидация вопросов** - проверка соответствия силлабусу
 - **Quality Analysis** - анализ сложности и дискриминативности вопросов
 - **Correlation Analysis** - корреляция между вопросами и общими баллами
 - **Student Patterns** - анализ успеваемости студентов
 - **Semantic Analysis** - семантический поиск дубликатов
+- **Criteria Analysis** - анализ критериев оценки и производительности
+- **Student Answers** - анализ ответов студентов и плагиата
 - **Импорт данных** - загрузка силлабусов и результатов экзаменов
 
 ## Запуск через Docker 
@@ -35,9 +42,10 @@ docker-compose up -d
 ### Настройки
 
 1.  Открыть http://localhost/phpmyadmin
-2. Создайте новую базу данных
-3. Импортируйте SQL:  `ai_analytics.sql` , `exam_analyzer_2_full.sql`
-4. При первом запуске будет создан пользователь по умолчанию:
+2. Создайте новую базу данных с именем `exam_analyzer_2`
+3. Импортируйте SQL:  `sql/full_database_setup.sql`
+4. Настройте подключение к БД в `ai_standalone/config.php`
+5. При первом запуске будет создан пользователь по умолчанию:
    - Логин: `superadmin`
    - Пароль: `superadmin123`
 

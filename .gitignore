@@ -15,7 +15,6 @@ npm-debug.log*
 .env.local
 .env.*.local
 uploads/
-*.sql
 *.sqlite
 *.db
 cache/
