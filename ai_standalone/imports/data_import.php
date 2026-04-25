@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/includes/auth.php';
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../db.php';
 require_login();
 require_role(['superadmin', 'admin']);
 
@@ -42,8 +42,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['exam_export'])) {
                 ");
 
                 $stmtQuestion = $pdo->prepare("INSERT IGNORE INTO questions (question_id, question_text, max_score, question_type) VALUES (:qid, :qtext, :max, 'single')");
-                $stmtStudent = $pdo->prepare("INSERT IGNORE INTO students (student_id, course_number) VALUES (:sid, 3)");
+                $stmtStudent = $pdo->prepare("INSERT IGNORE INTO students (student_id, course_number) VALUES (:sid, :course)");
                 $stmtHierQuestion = $pdo->prepare("INSERT IGNORE INTO hier_questions (question_id, question_text, max_score, question_type) VALUES (:qid, :qtext, :max, 'single_choice')");
+                $stmtWorkMapping = $pdo->prepare("
+                    INSERT IGNORE INTO work_mapping (student_id, question_id, discipline_name, course_number, import_id)
+                    VALUES (:sid, :qid, :disc, :course, :import_id)
+                ");
 
                 $inserted = 0;
                 $errors = 0;
@@ -55,12 +59,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['exam_export'])) {
                     if ($index === 0) continue;
 
                     try {
-                        $questionId = !empty($row['question_id']) && is_numeric($row['question_id']) ? (int)$row['question_id'] : null;
-                        $studentId = !empty($row['student_id']) && is_numeric($row['student_id']) ? (int)$row['student_id'] : null;
-                        $disciplineName = trim($row['discipline_name'] ?? '');
-                        $courseNumber = !empty($row['course_number']) && is_numeric($row['course_number']) ? (int)$row['course_number'] : null;
+                        $questionId = !empty($row['ID вопроса'] ?? $row['question_id']) && is_numeric($row['ID вопроса'] ?? $row['question_id']) ? (int)($row['ID вопроса'] ?? $row['question_id']) : null;
+                        $studentId = !empty($row['ID студента'] ?? $row['student_id']) && is_numeric($row['ID студента'] ?? $row['student_id']) ? (int)($row['ID студента'] ?? $row['student_id']) : null;
+                        $disciplineName = trim($row['Дисциплина'] ?? $row['discipline_name'] ?? '');
+                        $courseNumber = !empty($row['Курс'] ?? $row['course_number']) && is_numeric($row['Курс'] ?? $row['course_number']) ? (int)($row['Курс'] ?? $row['course_number']) : null;
                         
-                        $scoreAfter = $row['score_after_appeal'] ?? '';
+                        $scoreAfter = $row['Оценка после апелляции'] ?? $row['score_after_appeal'] ?? '';
                         $receivedScore = ($scoreAfter !== '' && $scoreAfter !== '-' && is_numeric($scoreAfter)) ? (float)$scoreAfter : null;
 
                         if (!empty($questionId)) {
@@ -78,7 +82,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['exam_export'])) {
 
                         if (!empty($studentId)) {
                             $stmtStudent->execute([
-                                ':sid' => $studentId
+                                ':sid' => $studentId,
+                                ':course' => $courseNumber ?? 3
                             ]);
                         }
 
@@ -95,6 +100,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['exam_export'])) {
                                 ':score4' => $receivedScore,
                             ]);
                             $inserted++;
+
+                            if ($studentId && $questionId) {
+                                $stmtWorkMapping->execute([
+                                    ':sid' => $studentId,
+                                    ':qid' => $questionId,
+                                    ':disc' => $disciplineName,
+                                    ':course' => $courseNumber ?? 3,
+                                    ':import_id' => $importId
+                                ]);
+                            }
 
                             if ($disciplineName && !isset($disciplines[$disciplineName])) {
                                 $disciplines[$disciplineName] = true;
@@ -176,12 +191,12 @@ $lang = get_lang();
 <head>
   <meta charset="utf-8">
   <title>Data Import</title>
-  <link href="assets/vendor/css/bootstrap-lite.css" rel="stylesheet">
-  <link href="assets/app.css" rel="stylesheet">
+  <link href="../assets/vendor/css/bootstrap-lite.css" rel="stylesheet">
+  <link href="../assets/app.css" rel="stylesheet">
   <style>body{background:#f5f5f5}.stats-box{background:#fff;border-radius:12px;padding:1.5rem;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1)}</style>
 </head>
 <body>
-<?php require_once __DIR__ . '/includes/layout.php'; ?>
+<?php require_once __DIR__ . '/../includes/layout.php'; ?>
 
 <div class="container-fluid py-4">
   <h1 class="h3 mb-4">Data Import</h1>
@@ -190,7 +205,7 @@ $lang = get_lang();
   <?php if ($error): ?><div class="alert alert-danger"><?= h($error) ?></div><?php endif; ?>
 
   <div class="alert alert-info mb-4">
-    <strong>ODS file?</strong> First convert it using <a href="convert_ods.php" class="alert-link">ODS Converter</a>
+    <strong>ODS file?</strong> First convert it using <a href="../convert_ods.php" class="alert-link">ODS Converter</a>
   </div>
 
   <div class="row g-4 mb-4">
@@ -222,7 +237,7 @@ $lang = get_lang();
           </div>
           <hr>
           <div class="d-grid gap-2">
-            <a href="index.php" class="btn btn-outline-success">AI Analytics</a>
+            <a href="../index.php" class="btn btn-outline-success">AI Analytics</a>
             <a href="import_syllabus.php" class="btn btn-outline-dark">Import Syllabus</a>
           </div>
         </div>
@@ -230,7 +245,7 @@ $lang = get_lang();
     </div>
   </div>
 </div>
-<script src="assets/vendor/js/bootstrap.bundle.min.js"></script>
+<script src="../assets/vendor/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 

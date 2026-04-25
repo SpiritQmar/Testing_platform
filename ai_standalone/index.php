@@ -146,6 +146,8 @@ $sections = [
     'correlation' => t('correlations'),
     'students' => t('students'),
     'semantic' => t('semantic'),
+    'criteria' => t('criteria_analysis'),
+    'answers' => t('student_answers'),
     'import' => t('import'),
     'rules' => t('rules'),
     'settings' => t('settings'),
@@ -156,7 +158,7 @@ render_header(t('title'));
 
 <script>
 function showChart(chartType) {
-  const charts = ['quality', 'correlation', 'students', 'validation', 'semantic'];
+  const charts = ['quality', 'correlation', 'students', 'validation', 'semantic', 'criteria', 'answers'];
   charts.forEach(type => {
     const chartDiv = document.getElementById('chart-' + type);
     const btn = document.getElementById('btn-' + type);
@@ -178,7 +180,7 @@ function showChart(chartType) {
 }
 
 function showImportTab(tabType) {
-  const tabs = ['syllabus', 'ods', 'syllabus-link', 'duplicates'];
+  const tabs = ['syllabus', 'ods', 'syllabus-link', 'duplicates', 'criteria', 'details', 'answers'];
   tabs.forEach(type => {
     const tabDiv = document.getElementById('import-' + type);
     const btn = document.getElementById('import-btn-' + type);
@@ -501,6 +503,8 @@ table tbody tr:last-child td { border-bottom: none; }
               <button onclick="showChart('students')" id="btn-students" class="chart-button"><?= t('students') ?></button>
               <button onclick="showChart('validation')" id="btn-validation" class="chart-button"><?= t('validation') ?></button>
               <button onclick="showChart('semantic')" id="btn-semantic" class="chart-button"><?= t('semantic') ?></button>
+              <button onclick="showChart('criteria')" id="btn-criteria" class="chart-button"><?= t('criteria_analysis') ?></button>
+              <button onclick="showChart('answers')" id="btn-answers" class="chart-button"><?= t('student_answers') ?></button>
             </div>
             <div id="chart-quality" style="display: block;">
               <h4 class="chart-title"><?= t('chart_quality_distribution') ?></h4>
@@ -530,6 +534,18 @@ table tbody tr:last-child td { border-bottom: none; }
               <h4 class="chart-title"><?= t('chart_semantic_analysis') ?></h4>
               <div class="chart-container">
                 <canvas id="semanticChart"></canvas>
+              </div>
+            </div>
+            <div id="chart-criteria" style="display: block;">
+              <h4 class="chart-title"><?= t('criteria_analysis') ?></h4>
+              <div class="chart-container">
+                <canvas id="criteriaChart"></canvas>
+              </div>
+            </div>
+            <div id="chart-answers" style="display: block;">
+              <h4 class="chart-title"><?= t('student_answers') ?></h4>
+              <div class="chart-container">
+                <canvas id="answersChart"></canvas>
               </div>
             </div>
           </div>
@@ -786,50 +802,61 @@ table tbody tr:last-child td { border-bottom: none; }
             
             if ($file['error'] === UPLOAD_ERR_OK) {
                 try {
-                    $data = readOdsFile($file['tmp_name']);
+                    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+                    
+                    if ($extension === 'csv') {
+                        $data = readCsvFile($file['tmp_name'], ',');
+                    } else {
+                        $data = readOdsFile($file['tmp_name']);
+                    }
                     
                     if (empty($data)) {
-                        throw new Exception('ODS file is empty');
+                        throw new Exception('File is empty');
                     }
                     
-                    $uploadDir = __DIR__ . '/uploads/';
-                    if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
-                    
-                    $csvFileName = 'converted_' . date('Y-m-d_H-i-s') . '.csv';
-                    $csvFilePath = $uploadDir . $csvFileName;
-                    
-                    $handle = fopen($csvFilePath, 'w');
-                    if ($handle === false) {
-                        throw new Exception('Failed to create file');
-                    }
-                    
-
-                    fputcsv($handle, ['question_id', 'student_id', 'discipline_name', 'course_number', 'score_after_appeal', 'score_before_appeal', 'discipline_score'], ';');
-                    
-
                     $converted = 0;
-                    foreach ($data as $index => $row) {
-                        if ($index === 0) continue;
+                    
+                    if ($extension === 'csv') {
+                        $csvData = $data;
+                        $csvFileName = $file['name'];
+                        $converted = count($data) - 1;
+                    } else {
+                        $uploadDir = __DIR__ . '/uploads/';
+                        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
                         
-                        $questionId = $row['ID тематики'] ?? $row['ID вопроса'] ?? $row['ID fråga'] ?? $row['ID вопроса'] ?? '';
-                        $studentId = $row['ID студента'] ?? $row['ID student'] ?? '';
-                        $disciplineName = $row['Дисциплина'] ?? $row['Disciplin'] ?? '';
-                        $courseNumber = $row['Курс'] ?? $row['Kurs'] ?? '';
-                        $scoreAfter = $row['Оценка после апелляции'] ?? $row['Bedömning efter överklagande'] ?? '';
-                        $scoreBefore = $row['Оценка до апелляции'] ?? $row['Bedömning före överklagande'] ?? '';
-                        $scoreDiscipline = $row['Оценка за дисциплину'] ?? $row['Bedömning för disciplin'] ?? '';
+                        $csvFileName = 'converted_' . date('Y-m-d_H-i-s') . '.csv';
+                        $csvFilePath = $uploadDir . $csvFileName;
+                        
+                        $handle = fopen($csvFilePath, 'w');
+                        if ($handle === false) {
+                            throw new Exception('Failed to create file');
+                        }
                         
 
-                        $finalScore = $scoreAfter !== '' && $scoreAfter !== '-' ? $scoreAfter : ($scoreBefore !== '' && $scoreBefore !== '-' ? $scoreBefore : $scoreDiscipline);
+                        fputcsv($handle, ['question_id', 'student_id', 'discipline_name', 'course_number', 'score_after_appeal', 'score_before_appeal', 'discipline_score'], ';');
                         
-                        fputcsv($handle, [$questionId, $studentId, $disciplineName, $courseNumber, $finalScore, $scoreBefore, $scoreDiscipline], ';');
-                        $converted++;
+
+                        foreach ($data as $index => $row) {
+                            if ($index === 0) continue;
+                            
+                            $questionId = $row['ID тематики'] ?? $row['ID вопроса'] ?? $row['ID fråga'] ?? $row['ID вопроса'] ?? '';
+                            $studentId = $row['ID студента'] ?? $row['ID student'] ?? '';
+                            $disciplineName = $row['Дисциплина'] ?? $row['Disciplin'] ?? '';
+                            $courseNumber = $row['Курс'] ?? $row['Kurs'] ?? '';
+                            $scoreAfter = $row['Оценка после апелляции'] ?? $row['Bedömning efter överklagande'] ?? '';
+                            $scoreBefore = $row['Оценка до апелляции'] ?? $row['Bedömning före överklagande'] ?? '';
+                            $scoreDiscipline = $row['Оценка за дисциплину'] ?? $row['Bedömning för disciplin'] ?? '';
+                            
+
+                            $finalScore = $scoreAfter !== '' && $scoreAfter !== '-' ? $scoreAfter : ($scoreBefore !== '' && $scoreBefore !== '-' ? $scoreBefore : $scoreDiscipline);
+                            
+                            fputcsv($handle, [$questionId, $studentId, $disciplineName, $courseNumber, $finalScore, $scoreBefore, $scoreDiscipline], ';');
+                            $converted++;
+                        }
+                        
+                        fclose($handle);
+                        $csvData = readCsvFile($csvFilePath);
                     }
-                    
-                    fclose($handle);
-                    
-
-                    $csvData = readCsvFile($csvFilePath);
                     
                     $inserted = 0;
                     $disciplines = [];
@@ -847,21 +874,25 @@ table tbody tr:last-child td { border-bottom: none; }
                         ");
 
                         $stmtQuestion = $pdo->prepare("INSERT IGNORE INTO questions (question_id, question_text, max_score, question_type) VALUES (:qid, :qtext, :max, 'single')");
-                        $stmtStudent = $pdo->prepare("INSERT IGNORE INTO students (student_id, course_number) VALUES (:sid, " . DEFAULT_COURSE . ")");
+                        $stmtStudent = $pdo->prepare("INSERT IGNORE INTO students (student_id, course_number) VALUES (:sid, :course)");
                         $stmtHierQuestion = $pdo->prepare("INSERT IGNORE INTO hier_questions (question_id, question_text, max_score, question_type) VALUES (:qid, :qtext, :max, 'single_choice')");
+                        $stmtWorkMapping = $pdo->prepare("
+                            INSERT IGNORE INTO work_mapping (student_id, question_id, discipline_name, course_number, import_id)
+                            VALUES (:sid, :qid, :disc, :course, :import_id)
+                        ");
 
                         foreach ($csvData as $index => $row) {
                             if ($index === 0) continue;
 
                             try {
-                                $questionId = !empty($row['question_id']) && is_numeric($row['question_id']) ? (int)$row['question_id'] : null;
-                                $studentId = !empty($row['student_id']) && is_numeric($row['student_id']) ? (int)$row['student_id'] : null;
-                                $disciplineName = trim($row['discipline_name'] ?? '');
-                                $courseNumber = !empty($row['course_number']) && is_numeric($row['course_number']) ? (int)$row['course_number'] : null;
+                                $questionId = isset($row['ID вопроса']) && is_numeric($row['ID вопроса']) ? (int)$row['ID вопроса'] : (isset($row['question_id']) && is_numeric($row['question_id']) ? (int)$row['question_id'] : null);
+                                $studentId = isset($row['ID студента']) && is_numeric($row['ID студента']) ? (int)$row['ID студента'] : (isset($row['student_id']) && is_numeric($row['student_id']) ? (int)$row['student_id'] : null);
+                                $disciplineName = trim($row['Дисциплина'] ?? $row['discipline_name'] ?? '');
+                                $courseNumber = isset($row['Курс']) && is_numeric($row['Курс']) ? (int)$row['Курс'] : (isset($row['course_number']) && is_numeric($row['course_number']) ? (int)$row['course_number'] : null);
                                 
-                                $scoreAfter = $row['score_after_appeal'] ?? '';
-                                $scoreBefore = $row['score_before_appeal'] ?? '';
-                                $scoreDiscipline = $row['discipline_score'] ?? '';
+                                $scoreAfter = $row['Оценка после апелляции'] ?? $row['score_after_appeal'] ?? '';
+                                $scoreBefore = $row['Оценка до апелляции'] ?? $row['score_before_appeal'] ?? '';
+                                $scoreDiscipline = $row['Оценка за дисциплину'] ?? $row['discipline_score'] ?? '';
                                 
 
                                 $receivedScore = null;
@@ -879,7 +910,10 @@ table tbody tr:last-child td { border-bottom: none; }
                                 }
 
                                 if (!empty($studentId)) {
-                                    $stmtStudent->execute([':sid' => $studentId]);
+                                    $stmtStudent->execute([
+                                        ':sid' => $studentId,
+                                        ':course' => $courseNumber ?? DEFAULT_COURSE
+                                    ]);
                                 }
 
                                 if ($questionId !== null || $studentId !== null) {
@@ -895,6 +929,16 @@ table tbody tr:last-child td { border-bottom: none; }
                                         ':score4' => $receivedScore,
                                     ]);
                                     $inserted++;
+
+                                    if ($studentId && $questionId) {
+                                        $stmtWorkMapping->execute([
+                                            ':sid' => $studentId,
+                                            ':qid' => $questionId,
+                                            ':disc' => $disciplineName,
+                                            ':course' => $courseNumber ?? DEFAULT_COURSE,
+                                            ':import_id' => $importId
+                                        ]);
+                                    }
 
                                     if ($disciplineName && !isset($disciplines[$disciplineName])) {
                                         $disciplines[$disciplineName] = true;
@@ -1023,6 +1067,26 @@ table tbody tr:last-child td { border-bottom: none; }
                 if (in_array('students', $clearOptions)) {
                     $pdo->exec("DELETE FROM students");
                     $clearedItems[] = t('students');
+                }
+                
+                if (in_array('evaluation_criteria', $clearOptions)) {
+                    $pdo->exec("DELETE FROM evaluation_criteria");
+                    $clearedItems[] = 'Evaluation Criteria';
+                }
+                
+                if (in_array('evaluation_details', $clearOptions)) {
+                    $pdo->exec("DELETE FROM evaluation_details");
+                    $clearedItems[] = 'Evaluation Details';
+                }
+                
+                if (in_array('student_answers', $clearOptions)) {
+                    $pdo->exec("DELETE FROM student_answers");
+                    $clearedItems[] = 'Student Answers';
+                }
+                
+                if (in_array('work_mapping', $clearOptions)) {
+                    $pdo->exec("DELETE FROM work_mapping");
+                    $clearedItems[] = 'Work Mapping';
                 }
                 
                 if (in_array('uploads', $clearOptions)) {
@@ -1155,6 +1219,22 @@ table tbody tr:last-child td { border-bottom: none; }
               <label for="clear_students" class="form-check-label"><?= t('students') ?></label>
             </div>
             <div class="mb-2">
+              <input type="checkbox" name="clear_options[]" value="evaluation_criteria" id="clear_evaluation_criteria" class="form-check-input">
+              <label for="clear_evaluation_criteria" class="form-check-label"><?= t('evaluation_criteria') ?></label>
+            </div>
+            <div class="mb-2">
+              <input type="checkbox" name="clear_options[]" value="evaluation_details" id="clear_evaluation_details" class="form-check-input">
+              <label for="clear_evaluation_details" class="form-check-label"><?= t('evaluation_details') ?></label>
+            </div>
+            <div class="mb-2">
+              <input type="checkbox" name="clear_options[]" value="student_answers" id="clear_student_answers" class="form-check-input">
+              <label for="clear_student_answers" class="form-check-label"><?= t('student_answers') ?></label>
+            </div>
+            <div class="mb-2">
+              <input type="checkbox" name="clear_options[]" value="work_mapping" id="clear_work_mapping" class="form-check-input">
+              <label for="clear_work_mapping" class="form-check-label">Work Mapping</label>
+            </div>
+            <div class="mb-2">
               <input type="checkbox" name="clear_options[]" value="uploads" id="clear_uploads" class="form-check-input">
               <label for="clear_uploads" class="form-check-label"><?= t('uploaded_files') ?></label>
             </div>
@@ -1169,6 +1249,9 @@ table tbody tr:last-child td { border-bottom: none; }
       <button onclick="showImportTab('ods')" id="import-btn-ods" class="chart-button"><?= t('ods_exam_results') ?></button>
       <button onclick="showImportTab('syllabus-link')" id="import-btn-syllabus-link" class="chart-button"><?= t('link_syllabus_questions') ?></button>
       <button onclick="showImportTab('duplicates')" id="import-btn-duplicates" class="chart-button"><?= t('duplicate_detection') ?></button>
+      <button onclick="showImportTab('criteria')" id="import-btn-criteria" class="chart-button"><?= t('evaluation_criteria') ?></button>
+      <button onclick="showImportTab('details')" id="import-btn-details" class="chart-button"><?= t('evaluation_details') ?></button>
+      <button onclick="showImportTab('answers')" id="import-btn-answers" class="chart-button"><?= t('student_answers') ?></button>
     </div>
     
     <div id="import-syllabus" style="display: block;">
@@ -1208,8 +1291,8 @@ table tbody tr:last-child td { border-bottom: none; }
           
           <div class="mb-3">
             <label class="form-label fw-semibold"><?= t('ods_file') ?></label>
-            <input type="file" name="ods_file" class="form-control" accept=".ods" required>
-            <small class="text-muted"><?= t('exam_export_file') ?></small>
+            <input type="file" name="ods_file" class="form-control" accept=".ods,.csv" required>
+            <small class="text-muted"><?= t('exam_export_file') ?> (ODS or CSV)</small>
           </div>
           <button type="submit" class="btn btn-primary"><?= t('convert_import') ?></button>
         </form>
@@ -1395,6 +1478,42 @@ table tbody tr:last-child td { border-bottom: none; }
         </div>
     </div>
     
+    <div id="import-criteria" style="display: none;">
+        <form method="post" enctype="multipart/form-data" action="imports/import_evaluation_criteria.php" class="mb-4">
+          <?= csrf_input() ?>
+          <div class="mb-3">
+            <label class="form-label fw-semibold"><?= t('evaluation_criteria_file') ?></label>
+            <input type="file" name="criteria_file" class="form-control" accept=".csv" required>
+            <small class="text-muted">Columns: ID, Қазақша, Русский, English, Вес</small>
+          </div>
+          <button type="submit" class="btn btn-primary"><?= t('import_criteria') ?></button>
+        </form>
+    </div>
+    
+    <div id="import-details" style="display: none;">
+        <form method="post" enctype="multipart/form-data" action="imports/import_evaluation_details.php" class="mb-4">
+          <?= csrf_input() ?>
+          <div class="mb-3">
+            <label class="form-label fw-semibold"><?= t('evaluation_details_file') ?></label>
+            <input type="file" name="details_file" class="form-control" accept=".csv" required>
+            <small class="text-muted">Columns: Код работы, ID критерия, Оценка по 100 шкале</small>
+          </div>
+          <button type="submit" class="btn btn-primary"><?= t('import_details') ?></button>
+        </form>
+    </div>
+    
+    <div id="import-answers" style="display: none;">
+        <form method="post" enctype="multipart/form-data" action="imports/import_student_answers.php" class="mb-4">
+          <?= csrf_input() ?>
+          <div class="mb-3">
+            <label class="form-label fw-semibold"><?= t('student_answers_file') ?></label>
+            <input type="file" name="answers_file" class="form-control" accept=".csv" required>
+            <small class="text-muted">Columns: Код работы, Язык, Вопрос, Ответ в BASE64, ID проверяющего преподавателя, Итоговая оценка, Комментарий преподавателя к оценке, Штраф за плагиат</small>
+          </div>
+          <button type="submit" class="btn btn-primary"><?= t('import_answers') ?></button>
+        </form>
+    </div>
+    
     <div class="row g-4">
       <div class="col-md-6">
         <div class="card">
@@ -1462,6 +1581,11 @@ table tbody tr:last-child td { border-bottom: none; }
     <div class="table-container">
       <h3 class="h5 mb-3"><?= t('validation') ?></h3>
       <p class="text-muted small mb-3"><?= t('validation_desc') ?></p>
+      <?php if ($importId !== null): ?>
+        <div class="mb-4">
+            <canvas id="validationChartTab" style="max-height: 300px;"></canvas>
+        </div>
+      <?php endif; ?>
       <?php if ($importId !== null): ?>
         <?php
         $page = isset($_GET['validation_page']) ? max(1, (int)$_GET['validation_page']) : 1;
@@ -1547,6 +1671,12 @@ table tbody tr:last-child td { border-bottom: none; }
     <div class="table-container">
       <h3 class="h5 mb-3"><?= t('quality') ?></h3>
       <p class="text-muted small mb-3"><?= t('quality_desc') ?></p>
+
+      <?php if ($importId !== null): ?>
+        <div class="mb-4">
+            <canvas id="qualityChartTab" style="max-height: 300px;"></canvas>
+        </div>
+      <?php endif; ?>
 
       <?php if ($importId !== null): ?>
         <?php
@@ -1715,6 +1845,11 @@ table tbody tr:last-child td { border-bottom: none; }
       <h3 class="h5 mb-3"><?= t('correlation') ?></h3>
       <p class="text-muted small mb-3"><?= t('correlation_desc') ?></p>
       <?php if ($importId !== null): ?>
+        <div class="mb-4">
+            <canvas id="correlationChartTab" style="max-height: 300px;"></canvas>
+        </div>
+      <?php endif; ?>
+      <?php if ($importId !== null): ?>
         <?php
         $page = isset($_GET['correlation_page']) ? max(1, (int)$_GET['correlation_page']) : 1;
         $perPage = PER_PAGE;
@@ -1786,6 +1921,11 @@ table tbody tr:last-child td { border-bottom: none; }
       <h3 class="h5 mb-3"><?= t('students') ?></h3>
       <p class="text-muted small mb-3"><?= t('students_desc') ?></p>
       <?php if ($importId !== null): ?>
+        <div class="mb-4">
+            <canvas id="studentsChartTab" style="max-height: 300px;"></canvas>
+        </div>
+      <?php endif; ?>
+      <?php if ($importId !== null): ?>
         <?php
         $page = isset($_GET['students_page']) ? max(1, (int)$_GET['students_page']) : 1;
         $perPage = PER_PAGE;
@@ -1851,6 +1991,11 @@ table tbody tr:last-child td { border-bottom: none; }
   <div id="section-semantic" class="ai-section <?= $section === 'semantic' ? 'active' : '' ?>">
     <div class="table-container">
       <h3 class="h5 mb-3">Semantic Analysis</h3>
+      <?php if ($importId !== null): ?>
+        <div class="mb-4">
+            <canvas id="semanticChartTab" style="max-height: 300px;"></canvas>
+        </div>
+      <?php endif; ?>
       <?php if ($importId !== null): ?>
         <?php
         $page = isset($_GET['semantic_page']) ? max(1, (int)$_GET['semantic_page']) : 1;
@@ -2110,6 +2255,132 @@ table tbody tr:last-child td { border-bottom: none; }
     </div>
   </div>
 
+  <div id="section-criteria" class="ai-section <?= $section === 'criteria' ? 'active' : '' ?>">
+    <div class="table-container">
+      <h3 class="h5 mb-3"><?= t('criteria_analysis') ?></h3>
+      <p class="text-muted small mb-3"><?= t('criteria_analysis_desc') ?? 'Performance analysis by evaluation criteria' ?></p>
+      
+      <?php
+      try {
+          $criteriaAnalysis = $ai->getCriteriaPerformanceAnalysis();
+      ?>
+      
+      <?php if (empty($criteriaAnalysis)): ?>
+        <div class="alert alert-info">No evaluation criteria data available. Import evaluation criteria and details first.</div>
+      <?php else: ?>
+        <div class="mb-4">
+            <canvas id="criteriaChartTab" style="max-height: 300px;"></canvas>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th>Criteria ID</th>
+                <th>Name (Russian)</th>
+                <th>Name (Kazakh)</th>
+                <th>Weight %</th>
+                <th>Avg Score</th>
+                <th>Evaluations</th>
+                <th>Min/Max</th>
+                <th>Std Dev</th>
+                <th>Level</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($criteriaAnalysis as $item): ?>
+                <tr class="<?= 
+                  $item['performance_level'] === 'excellent' ? 'table-success' : 
+                  ($item['performance_level'] === 'good' ? 'table-info' : 
+                  ($item['performance_level'] === 'satisfactory' ? 'table-warning' : 'table-danger')) 
+                ?>">
+                  <td><?= h($item['criteria_id']) ?></td>
+                  <td><?= h($item['name_russian']) ?></td>
+                  <td><?= h($item['name_kazakh']) ?></td>
+                  <td><?= h($item['weight_percent']) ?>%</td>
+                  <td><strong><?= h($item['avg_score']) ?></strong></td>
+                  <td><?= h($item['evaluations']) ?></td>
+                  <td><?= h($item['min_score']) ?> / <?= h($item['max_score']) ?></td>
+                  <td><?= h($item['std_score']) ?></td>
+                  <td>
+                    <span class="badge badge-soft <?= 
+                      $item['performance_level'] === 'excellent' ? 'success' : 
+                      ($item['performance_level'] === 'good' ? 'info' : 
+                      ($item['performance_level'] === 'satisfactory' ? 'warning' : 'danger')) 
+                    ?>">
+                      <?= h(ucfirst($item['performance_level'])) ?>
+                    </span>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php endif; ?>
+      
+      <?php
+      } catch (Throwable $e) {
+          echo '<div class="alert alert-danger">Error: ' . h($e->getMessage()) . '</div>';
+      }
+      ?>
+    </div>
+  </div>
+
+  <div id="section-answers" class="ai-section <?= $section === 'answers' ? 'active' : '' ?>">
+    <div class="table-container">
+      <h3 class="h5 mb-3"><?= t('student_answers') ?></h3>
+      <p class="text-muted small mb-3"><?= t('student_answers_desc') ?? 'Analysis of student answers by language and plagiarism detection' ?></p>
+      
+      <?php
+      try {
+          $answersAnalysis = $ai->getStudentAnswerAnalysis();
+      ?>
+      
+      <?php if (empty($answersAnalysis)): ?>
+        <div class="alert alert-info">No student answers data available. Import student answers first.</div>
+      <?php else: ?>
+        <div class="mb-4">
+            <canvas id="answersChartTab" style="max-height: 300px;"></canvas>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th>Language</th>
+                <th>Total Answers</th>
+                <th>Avg Score</th>
+                <th>Avg Penalty</th>
+                <th>Plagiarism Count</th>
+                <th>Plagiarism Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($answersAnalysis as $item): ?>
+                <tr class="<?= $item['plagiarism_rate'] > 10 ? 'table-danger' : 'table-success' ?>">
+                  <td><strong><?= h($item['language']) ?></strong></td>
+                  <td><?= h($item['total_answers']) ?></td>
+                  <td><strong><?= h($item['avg_score']) ?></strong></td>
+                  <td><?= h($item['avg_penalty']) ?></td>
+                  <td><?= h($item['plagiarism_count']) ?></td>
+                  <td>
+                    <span class="badge bg-<?= $item['plagiarism_rate'] > 10 ? 'danger' : 'success' ?>">
+                      <?= h($item['plagiarism_rate']) ?>%
+                    </span>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php endif; ?>
+      
+      <?php
+      } catch (Throwable $e) {
+          echo '<div class="alert alert-danger">Error: ' . h($e->getMessage()) . '</div>';
+      }
+      ?>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -2311,6 +2582,268 @@ function initializeCharts() {
             });
         } catch (error) {
             console.error('Error creating semantic chart:', error);
+        }
+    }
+
+    const criteriaCtx = document.getElementById('criteriaChart');
+    if (criteriaCtx && chartData.criteria) {
+        try {
+            new Chart(criteriaCtx, {
+                type: 'pie',
+                data: {
+                    labels: chartData.criteria.labels,
+                    datasets: [{
+                        data: chartData.criteria.data,
+                        backgroundColor: chartData.criteria.backgroundColors,
+                        borderColor: chartData.criteria.colors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    plugins: {
+                        ...commonOptions.plugins,
+                        legend: {
+                            ...commonOptions.plugins.legend,
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error creating criteria chart:', error);
+        }
+    }
+
+    const answersCtx = document.getElementById('answersChart');
+    if (answersCtx && chartData.answers) {
+        try {
+            new Chart(answersCtx, {
+                type: 'pie',
+                data: {
+                    labels: chartData.answers.labels,
+                    datasets: [{
+                        data: chartData.answers.data,
+                        backgroundColor: chartData.answers.backgroundColors,
+                        borderColor: chartData.answers.colors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    plugins: {
+                        ...commonOptions.plugins,
+                        legend: {
+                            ...commonOptions.plugins.legend,
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error creating answers chart:', error);
+        }
+    }
+
+    const validationCtxTab = document.getElementById('validationChartTab');
+    if (validationCtxTab && chartData.validation) {
+        try {
+            new Chart(validationCtxTab, {
+                type: 'pie',
+                data: {
+                    labels: chartData.validation.labels,
+                    datasets: [{
+                        data: chartData.validation.data,
+                        backgroundColor: chartData.validation.backgroundColors,
+                        borderColor: chartData.validation.colors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    plugins: {
+                        ...commonOptions.plugins,
+                        legend: {
+                            ...commonOptions.plugins.legend,
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error creating validation tab chart:', error);
+        }
+    }
+
+    const qualityCtxTab = document.getElementById('qualityChartTab');
+    if (qualityCtxTab && chartData.quality) {
+        try {
+            new Chart(qualityCtxTab, {
+                type: 'pie',
+                data: {
+                    labels: chartData.quality.labels,
+                    datasets: [{
+                        data: chartData.quality.data,
+                        backgroundColor: chartData.quality.backgroundColors,
+                        borderColor: chartData.quality.colors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    plugins: {
+                        ...commonOptions.plugins,
+                        legend: {
+                            ...commonOptions.plugins.legend,
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error creating quality tab chart:', error);
+        }
+    }
+
+    const correlationCtxTab = document.getElementById('correlationChartTab');
+    if (correlationCtxTab && chartData.correlation) {
+        try {
+            new Chart(correlationCtxTab, {
+                type: 'pie',
+                data: {
+                    labels: chartData.correlation.labels,
+                    datasets: [{
+                        data: chartData.correlation.data,
+                        backgroundColor: chartData.correlation.backgroundColors,
+                        borderColor: chartData.correlation.colors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    plugins: {
+                        ...commonOptions.plugins,
+                        legend: {
+                            ...commonOptions.plugins.legend,
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error creating correlation tab chart:', error);
+        }
+    }
+
+    const studentsCtxTab = document.getElementById('studentsChartTab');
+    if (studentsCtxTab && chartData.students) {
+        try {
+            new Chart(studentsCtxTab, {
+                type: 'pie',
+                data: {
+                    labels: chartData.students.labels,
+                    datasets: [{
+                        data: chartData.students.data,
+                        backgroundColor: chartData.students.backgroundColors,
+                        borderColor: chartData.students.colors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    plugins: {
+                        ...commonOptions.plugins,
+                        legend: {
+                            ...commonOptions.plugins.legend,
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error creating students tab chart:', error);
+        }
+    }
+
+    const semanticCtxTab = document.getElementById('semanticChartTab');
+    if (semanticCtxTab && chartData.semantic) {
+        try {
+            new Chart(semanticCtxTab, {
+                type: 'bar',
+                data: {
+                    labels: chartData.semantic.labels,
+                    datasets: [{
+                        data: chartData.semantic.data,
+                        backgroundColor: chartData.semantic.backgroundColors,
+                        borderColor: chartData.semantic.colors,
+                        borderWidth: 2,
+                        borderRadius: 6
+                    }]
+                },
+                options: barOptions
+            });
+        } catch (error) {
+            console.error('Error creating semantic tab chart:', error);
+        }
+    }
+
+    const criteriaCtxTab = document.getElementById('criteriaChartTab');
+    if (criteriaCtxTab && chartData.criteria) {
+        try {
+            new Chart(criteriaCtxTab, {
+                type: 'pie',
+                data: {
+                    labels: chartData.criteria.labels,
+                    datasets: [{
+                        data: chartData.criteria.data,
+                        backgroundColor: chartData.criteria.backgroundColors,
+                        borderColor: chartData.criteria.colors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    plugins: {
+                        ...commonOptions.plugins,
+                        legend: {
+                            ...commonOptions.plugins.legend,
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error creating criteria tab chart:', error);
+        }
+    }
+
+    const answersCtxTab = document.getElementById('answersChartTab');
+    if (answersCtxTab && chartData.answers) {
+        try {
+            new Chart(answersCtxTab, {
+                type: 'pie',
+                data: {
+                    labels: chartData.answers.labels,
+                    datasets: [{
+                        data: chartData.answers.data,
+                        backgroundColor: chartData.answers.backgroundColors,
+                        borderColor: chartData.answers.colors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    plugins: {
+                        ...commonOptions.plugins,
+                        legend: {
+                            ...commonOptions.plugins.legend,
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error creating answers tab chart:', error);
         }
     }
 }
@@ -2588,15 +3121,23 @@ function readOdsFile(string $filePath): array {
     return $data;
 }
 
-function readCsvFile(string $filePath): array {
+function readCsvFile(string $filePath, string $delimiter = null): array {
     $data = [];
     $handle = fopen($filePath, 'r');
     if ($handle === false) throw new Exception('Failed to open CSV');
-    $headers = fgetcsv($handle, 0, ';');
-    if ($headers === false) { fseek($handle, 0); $headers = fgetcsv($handle, 0, ','); }
+    
+    if ($delimiter === null) {
+        $headers = fgetcsv($handle, 0, ';');
+        if ($headers === false) { fseek($handle, 0); $headers = fgetcsv($handle, 0, ','); $delimiter = ','; }
+        else { $delimiter = ';'; }
+    } else {
+        $headers = fgetcsv($handle, 0, $delimiter);
+    }
+    
     if ($headers === false) throw new Exception('Failed to read headers');
     $headers = array_map('trim', $headers);
-    while (($row = fgetcsv($handle, 0, ';')) !== false || ($row = fgetcsv($handle, 0, ',')) !== false) {
+    
+    while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
         if (empty($row)) continue;
         $rowData = [];
         foreach ($headers as $index => $header) { $rowData[$header] = isset($row[$index]) ? trim($row[$index]) : ''; }

@@ -1,7 +1,7 @@
 <?php
 
-require_once __DIR__ . '/includes/layout.php';
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/../includes/layout.php';
+require_once __DIR__ . '/../db.php';
 
 require_login();
 require_role(['superadmin', 'admin']);
@@ -453,6 +453,21 @@ echo $pageScripts;
                 id="ods-tab" data-bs-toggle="tab" data-bs-target="#ods" 
                 type="button" role="tab">ODS Exam Results</button>
       </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link <?= $activeTab === 'criteria' ? 'active' : '' ?>" 
+                id="criteria-tab" data-bs-toggle="tab" data-bs-target="#criteria" 
+                type="button" role="tab">Evaluation Criteria</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link <?= $activeTab === 'details' ? 'active' : '' ?>" 
+                id="details-tab" data-bs-toggle="tab" data-bs-target="#details" 
+                type="button" role="tab">Evaluation Details</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link <?= $activeTab === 'answers' ? 'active' : '' ?>" 
+                id="answers-tab" data-bs-toggle="tab" data-bs-target="#answers" 
+                type="button" role="tab">Student Answers</button>
+      </li>
     </ul>
     
     <div class="tab-content" id="importTabsContent">
@@ -517,6 +532,48 @@ echo $pageScripts;
           </ul>
         </div>
       </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'criteria' ? 'show active' : '' ?>" 
+           id="criteria" role="tabpanel">
+        <form method="post" enctype="multipart/form-data" action="import_evaluation_criteria.php">
+          <?= csrf_input() ?>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Evaluation Criteria File (CSV)</label>
+            <input type="file" name="criteria_file" class="form-control" accept=".csv" required>
+            <small class="text-muted">Columns: ID, Қазақша, Русский, English, Вес</small>
+          </div>
+          <button type="submit" class="btn btn-primary">Import Criteria</button>
+          <a href="index.php" class="btn btn-outline-secondary">Back to Analytics</a>
+        </form>
+      </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'details' ? 'show active' : '' ?>" 
+           id="details" role="tabpanel">
+        <form method="post" enctype="multipart/form-data" action="import_evaluation_details.php">
+          <?= csrf_input() ?>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Evaluation Details File (CSV)</label>
+            <input type="file" name="details_file" class="form-control" accept=".csv" required>
+            <small class="text-muted">Columns: Код работы, ID критерия, Оценка по 100 шкале</small>
+          </div>
+          <button type="submit" class="btn btn-primary">Import Details</button>
+          <a href="index.php" class="btn btn-outline-secondary">Back to Analytics</a>
+        </form>
+      </div>
+
+      <div class="tab-pane fade <?= $activeTab === 'answers' ? 'show active' : '' ?>" 
+           id="answers" role="tabpanel">
+        <form method="post" enctype="multipart/form-data" action="import_student_answers.php">
+          <?= csrf_input() ?>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Student Answers File (CSV)</label>
+            <input type="file" name="answers_file" class="form-control" accept=".csv" required>
+            <small class="text-muted">Columns: Код работы, Язык, Вопрос, Ответ в BASE64, ID проверяющего преподавателя, Итоговая оценка, Комментарий преподавателя к оценке, Штраф за плагиат</small>
+          </div>
+          <button type="submit" class="btn btn-primary">Import Answers</button>
+          <a href="index.php" class="btn btn-outline-secondary">Back to Analytics</a>
+        </form>
+      </div>
     </div>
     
     <hr class="my-4">
@@ -558,7 +615,7 @@ echo $pageScripts;
     <?php endif; ?>
   </div>
 </div>
-<script src="assets/vendor/js/bootstrap.bundle.min.js"></script>
+<script src="../assets/vendor/js/bootstrap.bundle.min.js"></script>
 <?php render_footer(); ?>
 
 <?php

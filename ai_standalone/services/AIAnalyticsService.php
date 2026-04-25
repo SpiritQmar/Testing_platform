@@ -653,17 +653,149 @@ final class AIAnalyticsService
         } elseif ($alpha >= 0.7) {
             $interpretation = 'Приемлемая надежность';
         } elseif ($alpha >= 0.6) {
-            $interpretation = 'Сомнительная надежность';
-        } elseif ($alpha > 0) {
-            $interpretation = 'Ненадежный экзамен - требуется ревизия вопросов';
+            $interpretation = 'Слабая надежность';
+        } else {
+            $interpretation = 'Недостаточная надежность';
         }
 
         return [
-            'cronbach_alpha' => $alpha,
-            'avg_inter_item_correlation' => $reliabilityData['avg_inter_item_correlation'],
-            'question_count' => $reliabilityData['question_count'],
-            'interpretation' => $interpretation,
-            'correlation_matrix' => $reliabilityData['correlation_matrix'] ?? []
+            'cronbach_alpha' => round($alpha, 3),
+            'avg_inter_item_correlation' => round($reliabilityData['avg_inter_item_correlation'] ?? 0, 3),
+            'question_count' => (int)($reliabilityData['question_count'] ?? 0),
+            'interpretation' => $interpretation
         ];
+    }
+
+    public function getCriteriaPerformanceAnalysis(): array
+    {
+        try {
+            $query = "
+                SELECT ec.criteria_id, ec.name_russian, ec.name_kazakh, ec.name_english, ec.weight_percent,
+                       AVG(ed.score) as avg_score, COUNT(*) as evaluations,
+                       MIN(ed.score) as min_score, MAX(ed.score) as max_score,
+                       STDDEV_SAMP(ed.score) as std_score
+                FROM evaluation_details ed
+                JOIN evaluation_criteria ec ON ec.criteria_id = ed.criteria_id
+                GROUP BY ec.criteria_id
+                ORDER BY ec.criteria_id
+            ";
+            $stmt = $this->databaseConnection->query($query);
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            
+            $analysis = [];
+            foreach ($results as $row) {
+                $avgScore = (float)($row['avg_score'] ?? 0);
+                $weight = (float)($row['weight_percent'] ?? 20);
+                
+                $performanceLevel = 'normal';
+                if ($avgScore >= 85) {
+                    $performanceLevel = 'excellent';
+                } elseif ($avgScore >= 70) {
+                    $performanceLevel = 'good';
+                } elseif ($avgScore >= 50) {
+                    $performanceLevel = 'satisfactory';
+                } else {
+                    $performanceLevel = 'poor';
+                }
+                
+                $analysis[] = [
+                    'criteria_id' => (int)$row['criteria_id'],
+                    'name_russian' => $row['name_russian'],
+                    'name_kazakh' => $row['name_kazakh'],
+                    'name_english' => $row['name_english'],
+                    'weight_percent' => $weight,
+                    'avg_score' => round($avgScore, 2),
+                    'evaluations' => (int)$row['evaluations'],
+                    'min_score' => round((float)($row['min_score'] ?? 0), 2),
+                    'max_score' => round((float)($row['max_score'] ?? 0), 2),
+                    'std_score' => round((float)($row['std_score'] ?? 0), 2),
+                    'performance_level' => $performanceLevel
+                ];
+            }
+            
+            return $analysis;
+        } catch (Throwable $e) {
+            error_log('Error in criteria performance analysis: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function getStudentAnswerAnalysis(): array
+    {
+        try {
+            $query = "
+                SELECT sa.language, COUNT(*) as answers,
+                       AVG(sa.final_score) as avg_score,
+                       AVG(sa.plagiarism_penalty) as avg_penalty,
+                       COUNT(CASE WHEN sa.plagiarism_penalty > 0 THEN 1 END) as plagiarism_count
+                FROM student_answers sa
+                GROUP BY sa.language
+                ORDER BY answers DESC
+            ";
+            $stmt = $this->databaseConnection->query($query);
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            
+            $analysis = [];
+            foreach ($results as $row) {
+                $totalAnswers = (int)$row['answers'];
+                $plagiarismRate = $totalAnswers > 0 ? ((int)$row['plagiarism_count'] / $totalAnswers) * 100 : 0;
+                
+                $analysis[] = [
+                    'language' => $row['language'],
+                    'total_answers' => $totalAnswers,
+                    'avg_score' => round((float)($row['avg_score'] ?? 0), 2),
+                    'avg_penalty' => round((float)($row['avg_penalty'] ?? 0), 2),
+                    'plagiarism_count' => (int)$row['plagiarism_count'],
+                    'plagiarism_rate' => round($plagiarismRate, 2)
+                ];
+            }
+            
+            return $analysis;
+        } catch (Throwable $e) {
+            error_log('Error in student answer analysis: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function getCriteriaByQuestionAnalysis(): array
+    {
+        try {
+            $query = "
+                SELECT w.question_id, ec.criteria_id, ec.name_russian,
+                       AVG(ed.score) as avg_score, COUNT(*) as evaluations
+                FROM evaluation_details ed
+                JOIN evaluation_criteria ec ON ec.criteria_id = ed.criteria_id
+                JOIN work_mapping w ON w.work_id = ed.work_id
+                GROUP BY w.question_id, ec.criteria_id
+                ORDER BY w.question_id, ec.criteria_id
+            ";
+            $stmt = $this->databaseConnection->query($query);
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            
+            $analysis = [];
+            foreach ($results as $row) {
+                $questionId = (int)$row['question_id'];
+                $criteriaId = (int)$row['criteria_id'];
+                
+                if (!isset($analysis[$questionId])) {
+                    $analysis[$questionId] = [
+                        'question_id' => $questionId,
+                        'criteria' => []
+                    ];
+                }
+                
+                $analysis[$questionId]['criteria'][] = [
+                    'criteria_id' => $criteriaId,
+                    'name_russian' => $row['name_russian'],
+                    'avg_score' => round((float)($row['avg_score'] ?? 0), 2),
+                    'evaluations' => (int)$row['evaluations']
+                ];
+            }
+            
+            return array_values($analysis);
+        } catch (Throwable $e) {
+            error_log('Error in criteria by question analysis: ' . $e->getMessage());
+            return [];
+        }
     }
 }

@@ -6,6 +6,8 @@
   "correlation": "Корреляционный анализ",
   "correlations": "Корреляции",
   "students": "Студенты",
+  "criteria_analysis": "Анализ критериев",
+  "student_answers": "Ответы студентов",
   "settings": "Настройки",
   "validation_desc": "Проверка вопросов на соответствие силлабусу: средний балл, количество попыток, наличие привязки к теме программы.",
   "quality_desc": "Анализ качества вопросов: средний балл, процент успешных ответов, сложность, дискриминативность.",
@@ -191,5 +193,14 @@
   "confirmation": "Подтверждение",
   "cancel": "Отмена",
   "confirm": "Подтвердить",
-  "refresh": "Обновить"
+  "refresh": "Обновить",
+  "evaluation_criteria": "Критерии оценки",
+  "evaluation_details": "Детализация оценок",
+  "student_answers": "Ответы студентов",
+  "evaluation_criteria_file": "Файл критериев оценки (CSV)",
+  "evaluation_details_file": "Файл детализации оценок (CSV)",
+  "student_answers_file": "Файл ответов студентов (CSV)",
+  "import_criteria": "Импортировать критерии",
+  "import_details": "Импортировать детализацию",
+  "import_answers": "Импортировать ответы"
 }

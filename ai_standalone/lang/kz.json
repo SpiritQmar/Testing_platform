@@ -6,6 +6,8 @@
   "correlation": "Корреляция",
   "correlations": "Корреляциялар",
   "students": "Студенттер",
+  "criteria_analysis": "Критерийлер талдауы",
+  "student_answers": "Студенттердің жауаптары",
   "settings": "Баптаулар",
   "validation_desc": "Сұрақтарды оқу бағдарламасына сәйкестікке тексеру: орташа балл, әрекет саны, тақырыппен байланыс.",
   "quality_desc": "Сұрақтар сапасының талдауы: орташа балл, сәтті жауаптар пайызы, қиындық, дискриминация.",
@@ -192,5 +194,14 @@
   "confirmation": "Растау",
   "cancel": "Болдыру",
   "confirm": "Растау",
-  "refresh": "Жаңарту"
+  "refresh": "Жаңарту",
+  "evaluation_criteria": "Бағалау критерийлері",
+  "evaluation_details": "Бағалау егжей-тегжейі",
+  "student_answers": "Студенттер жауаптары",
+  "evaluation_criteria_file": "Бағалау критерийлері файлы (CSV)",
+  "evaluation_details_file": "Бағалау егжей-тегжейі файлы (CSV)",
+  "student_answers_file": "Студенттер жауаптары файлы (CSV)",
+  "import_criteria": "Критерийлерді импорттау",
+  "import_details": "Егжей-тегжейді импорттау",
+  "import_answers": "Жауаптарды импорттау"
 }

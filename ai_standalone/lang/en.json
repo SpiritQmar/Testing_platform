@@ -6,6 +6,8 @@
   "correlation": "Correlation Analysis",
   "correlations": "Correlations",
   "students": "Students",
+  "criteria_analysis": "Criteria Analysis",
+  "student_answers": "Student Answers",
   "settings": "Settings",
   "validation_desc": "Check questions against syllabus: average score, attempts, topic linkage.",
   "quality_desc": "Question quality analysis: average score, success rate, difficulty, discrimination.",
@@ -192,5 +194,14 @@
   "confirmation": "Confirmation",
   "cancel": "Cancel",
   "confirm": "Confirm",
-  "refresh": "Refresh"
+  "refresh": "Refresh",
+  "evaluation_criteria": "Evaluation Criteria",
+  "evaluation_details": "Evaluation Details",
+  "student_answers": "Student Answers",
+  "evaluation_criteria_file": "Evaluation Criteria File (CSV)",
+  "evaluation_details_file": "Evaluation Details File (CSV)",
+  "student_answers_file": "Student Answers File (CSV)",
+  "import_criteria": "Import Criteria",
+  "import_details": "Import Details",
+  "import_answers": "Import Answers"
 }

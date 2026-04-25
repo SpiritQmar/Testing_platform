@@ -83,6 +83,33 @@ try {
         }
     }
 
+    $criteriaAnalysis = $ai->getCriteriaPerformanceAnalysis();
+    $excellent = 0;
+    $good = 0;
+    $satisfactory = 0;
+    $poor = 0;
+    if (!empty($criteriaAnalysis)) {
+        foreach ($criteriaAnalysis as $c) {
+            $level = $c['performance_level'] ?? '';
+            if ($level === 'excellent') $excellent++;
+            elseif ($level === 'good') $good++;
+            elseif ($level === 'satisfactory') $satisfactory++;
+            else $poor++;
+        }
+    }
+
+    $answersAnalysis = $ai->getStudentAnswerAnalysis();
+    $languages = [];
+    $plagiarismHigh = 0;
+    $plagiarismLow = 0;
+    if (!empty($answersAnalysis)) {
+        foreach ($answersAnalysis as $a) {
+            $languages[] = $a['language'];
+            if ($a['plagiarism_rate'] > 10) $plagiarismHigh++;
+            else $plagiarismLow++;
+        }
+    }
+
     $data = [
         'quality' => [
             'labels' => ['Сложный', 'Легкий', 'Норма'],
@@ -113,6 +140,18 @@ try {
             'data' => [$high, $medium, $low],
             'colors' => ['#059669', '#d97706', '#dc2626'],
             'backgroundColors' => ['#d1fae5', '#fef3c7', '#fee2e2']
+        ],
+        'criteria' => [
+            'labels' => ['Отлично', 'Хорошо', 'Удовлетворительно', 'Плохо'],
+            'data' => [$excellent, $good, $satisfactory, $poor],
+            'colors' => ['#059669', '#0ea5e9', '#d97706', '#dc2626'],
+            'backgroundColors' => ['#d1fae5', '#e0f2fe', '#fef3c7', '#fee2e2']
+        ],
+        'answers' => [
+            'labels' => ['Низкий плагиат', 'Высокий плагиат'],
+            'data' => [$plagiarismLow, $plagiarismHigh],
+            'colors' => ['#059669', '#dc2626'],
+            'backgroundColors' => ['#d1fae5', '#fee2e2']
         ]
     ];
     
