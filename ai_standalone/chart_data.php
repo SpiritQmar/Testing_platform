@@ -20,7 +20,7 @@ try {
     
     $ai = new AIAnalyticsService($pdo, $importId);
     $embeddingsService = new EmbeddingsService('http://localhost:8000', true);
-    $tfidf = new TfIdfService($pdo, $embeddingsService);
+    $tfidf = new TfIdfService($pdo, $embeddingsService, (int)$importId);
     
     $metrics = $ai->getQuestionQualityMetrics();
     $hard = 0;

@@ -102,9 +102,11 @@ $minStudentsDiscrimination = $_SESSION['min_students_discrimination'] ?? 10;
 $ai = new AIAnalyticsService($pdo, $importId);
 $ai->setMinStudentsForDiscrimination($minStudentsDiscrimination);
 $embeddingsService = new EmbeddingsService('http://localhost:8000', true);
-$tfidf = new TfIdfService($pdo, $embeddingsService);
+$tfidf = new TfIdfService($pdo, $embeddingsService, $importId);
 $rules = new RuleClassifierService($pdo);
 $router = new AnalyticsServiceRouter ($pdo);
+$questionImportFlash = $_SESSION['question_text_import_flash'] ?? null;
+unset($_SESSION['question_text_import_flash']);
 
 function renderPagination($section, $pageParam, $currentPage, $totalPages, $sortColumn = '', $sortDirection = '', $totalItems = 0) {
     if ($totalPages <= 1) return '';
@@ -180,7 +182,7 @@ function showChart(chartType) {
 }
 
 function showImportTab(tabType) {
-  const tabs = ['syllabus', 'ods', 'syllabus-link', 'duplicates', 'criteria', 'details', 'answers'];
+  const tabs = ['syllabus', 'ods', 'questions', 'syllabus-link', 'duplicates', 'criteria', 'details', 'answers'];
   tabs.forEach(type => {
     const tabDiv = document.getElementById('import-' + type);
     const btn = document.getElementById('import-btn-' + type);
@@ -196,6 +198,14 @@ function showImportTab(tabType) {
     }
   });
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  const importTab = params.get('import_tab');
+  if (importTab) {
+    showImportTab(importTab);
+  }
+});
 
 function showConfirm(message, onConfirm, form) {
   const modal = document.getElementById('confirmModal');
@@ -738,9 +748,6 @@ table tbody tr:last-child td { border-bottom: none; }
 
                     $topics = parseSyllabusTopics($text, $disciplineName, $courseNumber);
                     $questions = parseSyllabusQuestions($text);
-                    
-                    foreach ($questions as $q) {
-                    }
 
                     $pdo->beginTransaction();
                     
@@ -1310,10 +1317,14 @@ table tbody tr:last-child td { border-bottom: none; }
     <?php if ($importError): ?>
       <div class="alert alert-danger"><?= h($importError) ?></div>
     <?php endif; ?>
+    <?php if ($questionImportFlash): ?>
+      <div class="alert alert-<?= h($questionImportFlash['type'] ?? 'info') ?>"><?= h($questionImportFlash['message'] ?? '') ?></div>
+    <?php endif; ?>
     
     <div class="import-tabs">
       <button onclick="showImportTab('syllabus')" id="import-btn-syllabus" class="chart-button active"><?= t('syllabus_import') ?></button>
       <button onclick="showImportTab('ods')" id="import-btn-ods" class="chart-button"><?= t('ods_exam_results') ?></button>
+      <button onclick="showImportTab('questions')" id="import-btn-questions" class="chart-button">Импорт вопросов</button>
       <button onclick="showImportTab('syllabus-link')" id="import-btn-syllabus-link" class="chart-button"><?= t('link_syllabus_questions') ?></button>
       <button onclick="showImportTab('duplicates')" id="import-btn-duplicates" class="chart-button"><?= t('duplicate_detection') ?></button>
       <button onclick="showImportTab('criteria')" id="import-btn-criteria" class="chart-button"><?= t('evaluation_criteria') ?></button>
@@ -1385,6 +1396,80 @@ table tbody tr:last-child td { border-bottom: none; }
           </div>
         </div>
 
+        <div id="import-questions" style="display: none;">
+          <?php
+          $questionImportDisciplines = [];
+          $currentImportName = '';
+          try {
+              foreach ($imports as $importItem) {
+                  if ((int)$importItem['import_id'] === (int)$importId) {
+                      $currentImportName = $importItem['source_filename'] ?? '';
+                      break;
+                  }
+              }
+
+              if ($importId !== null) {
+                  $stmt = $pdo->prepare("
+                      SELECT DISTINCT discipline_name
+                      FROM raw_exam_results
+                      WHERE import_id = :import_id
+                        AND discipline_name IS NOT NULL
+                        AND discipline_name != ''
+                      ORDER BY discipline_name
+                  ");
+                  $stmt->execute([':import_id' => $importId]);
+                  $questionImportDisciplines = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+              }
+          } catch (Throwable $e) {
+              error_log('Error loading question import disciplines: ' . $e->getMessage());
+          }
+          ?>
+
+          <form method="post" enctype="multipart/form-data" action="imports/import_question_texts.php">
+            <?= csrf_input() ?>
+
+            <div class="alert alert-info">
+              <strong>Импорт текстов вопросов</strong>
+              <p class="mb-2 mt-2">Файл `txt` будет применён только к выбранной дисциплине в текущей выгрузке результатов. Вопросы из файла раскладываются по порядку на `question_id` этой дисциплины.</p>
+              <p class="mb-0">Если в файле и в выгрузке разное количество вопросов, импорт остановится и покажет ошибку.</p>
+            </div>
+
+            <?php if ($importId === null): ?>
+              <div class="alert alert-warning mb-3">Сначала выбери или загрузи выгрузку результатов.</div>
+            <?php endif; ?>
+
+            <input type="hidden" name="import_id" value="<?= (int)$importId ?>">
+
+            <div class="import-upload-box" onclick="document.getElementById('questionsFileInput').click()">
+              <div class="import-upload-icon">
+                <i class="bi bi-file-earmark-font"></i>
+              </div>
+              <p class="import-upload-text">Drag & Drop files here...</p>
+              <p class="import-upload-subtext">.TXT с нумерованными вопросами</p>
+              <button type="button" class="import-browse-btn">Or browse files</button>
+              <input type="file" name="questions_file" id="questionsFileInput" accept=".txt" required style="display: none;" onchange="updateUploadBox(this, 'questions')">
+            </div>
+
+            <div class="import-fields">
+              <div class="import-field">
+                <label class="form-label">Текущий импорт</label>
+                <input type="text" class="form-control" value="<?= h($currentImportName ?: 'Не выбран') ?>" readonly>
+              </div>
+              <div class="import-field">
+                <label class="form-label">Дисциплина</label>
+                <select name="discipline_name" class="form-select" required <?= $importId === null ? 'disabled' : '' ?>>
+                  <option value="">-- Выбери дисциплину --</option>
+                  <?php foreach ($questionImportDisciplines as $disciplineOption): ?>
+                    <option value="<?= h($disciplineOption) ?>"><?= h($disciplineOption) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+            </div>
+
+            <button type="submit" class="import-submit-btn" <?= $importId === null ? 'disabled' : '' ?>>Импортировать вопросы</button>
+          </form>
+        </div>
+
         <div id="import-syllabus-link" style="display: none;">
         <div class="alert alert-info">
           <strong><?= t('select_questions') ?></strong>
@@ -1400,21 +1485,32 @@ table tbody tr:last-child td { border-bottom: none; }
         $totalQuestions = 0;
         $queryError = '';
         try {
+            if ($importId !== null) {
+                $stmtCount = $pdo->prepare("
+                    SELECT COUNT(DISTINCT hq.question_id) as count
+                    FROM hier_questions hq
+                    INNER JOIN raw_exam_results r ON r.question_id = hq.question_id
+                    WHERE r.import_id = :import_id
+                ");
+                $stmtCount->execute([':import_id' => $importId]);
+                $totalQuestions = $stmtCount->fetch()['count'] ?? 0;
 
-            $stmtCount = $pdo->query("SELECT COUNT(*) as count FROM hier_questions");
-            $totalQuestions = $stmtCount->fetch()['count'] ?? 0;
-            
-
-            $stmt = $pdo->query("
-                SELECT hq.question_id, hq.question_text, hq.syllabus_topic_id,
-                       st.title as syllabus_title,
-                       r.discipline_name
-                FROM hier_questions hq
-                LEFT JOIN raw_exam_results r ON r.question_id = hq.question_id
-                LEFT JOIN ai_syllabus_topics st ON st.syllabus_topic_id = hq.syllabus_topic_id
-                GROUP BY hq.question_id
-            ");
-            $allQuestions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $stmt = $pdo->prepare("
+                    SELECT hq.question_id, hq.question_text, hq.syllabus_topic_id,
+                           st.title as syllabus_title,
+                           MAX(r.discipline_name) as discipline_name
+                    FROM hier_questions hq
+                    INNER JOIN raw_exam_results r ON r.question_id = hq.question_id
+                    LEFT JOIN ai_syllabus_topics st ON st.syllabus_topic_id = hq.syllabus_topic_id
+                    WHERE r.import_id = :import_id
+                    GROUP BY hq.question_id, hq.question_text, hq.syllabus_topic_id, st.title
+                    ORDER BY hq.question_id
+                ");
+                $stmt->execute([':import_id' => $importId]);
+                $allQuestions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $allQuestions = [];
+            }
         } catch (Throwable $e) {
             error_log("Error fetching questions: " . $e->getMessage());
             $queryError = $e->getMessage();
@@ -3108,12 +3204,15 @@ function extractDocxText(string $filePath): string
     if (!$xmlContent) {
         throw new Exception('File does not contain document.xml');
     }
-    
-    preg_match_all('/<w:t[^>]*>(.*?)<\/w:t>/s', $xmlContent, $matches);
-    $text = implode(' ', $matches[1]);
-    $text = html_entity_decode($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    
-    return $text;
+
+    $xmlContent = preg_replace('/<\/w:p>/i', "\n", $xmlContent);
+    $xmlContent = preg_replace('/<\/w:tr>/i', "\n", $xmlContent);
+    $xmlContent = preg_replace('/<\/w:tc>/i', "\t", $xmlContent);
+    $xmlContent = preg_replace('/<w:tab[^>]*\/>/i', "\t", $xmlContent);
+    $xmlContent = strip_tags($xmlContent);
+    $xmlContent = html_entity_decode($xmlContent, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+    return normalizeStructuredText($xmlContent);
 }
 
 function extractDocText(string $filePath): string
@@ -3153,12 +3252,14 @@ function extractOdtText(string $filePath): string
     if (!$xmlContent) {
         throw new Exception('File does not contain content.xml');
     }
-    
-    preg_match_all('/<text:p[^>]*>(.*?)<\/text:p>/s', $xmlContent, $matches);
-    $text = implode(' ', $matches[1]);
-    $text = strip_tags($text);
-    
-    return trim($text);
+
+    $xmlContent = preg_replace('/<\/text:p>/i', "\n", $xmlContent);
+    $xmlContent = preg_replace('/<\/table:table-row>/i', "\n", $xmlContent);
+    $xmlContent = preg_replace('/<\/table:table-cell>/i', "\t", $xmlContent);
+    $text = strip_tags($xmlContent);
+    $text = html_entity_decode($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+    return normalizeStructuredText($text);
 }
 
 function extractKeywords(string $text, string $disciplineName): array
@@ -3187,29 +3288,67 @@ function extractKeywords(string $text, string $disciplineName): array
 
 function parseSyllabusTopics(string $text, string $disciplineName, int $courseNumber): array
 {
-    $topics = [];
-    
-    $patterns = [
-        '/(\d+[\.\)]\s*)([A-Za-z][^\n\.]{10,100})/u',
-        '/(Topic\s*\d*[:\.\s]*)([A-Za-z][^\n\.]{10,100})/ui',
-        '/(Section\s*\d*[:\.\s]*)([A-Za-z][^\n\.]{10,100})/ui',
-    ];
-    
-    $foundTopics = [];
-    foreach ($patterns as $pattern) {
-        if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
-            foreach ($matches as $match) {
-                $title = trim($match[2]);
-                $normalizedTitle = mb_strtolower(preg_replace('/\s+/', ' ', $title), 'UTF-8');
-                if (!in_array($normalizedTitle, $foundTopics) && mb_strlen($title) >= 10) {
-                    $foundTopics[$normalizedTitle] = $title;
-                }
+    $lines = splitStructuredLines($text);
+    $collectedTitles = [];
+    $insidePlan = false;
+
+    for ($index = 0; $index < count($lines); $index++) {
+        $line = $lines[$index];
+
+        if (preg_match('/(тематический план|тақырыптық жоспар|план дисциплины|пәннің тақырыптық жоспары)/ui', $line)) {
+            $insidePlan = true;
+            continue;
+        }
+
+        if ($insidePlan && preg_match('/^(приложение\s*\d+|қосымша\s*\d+|всего[:]?|барлығы[:]?)/ui', $line)) {
+            if (count($collectedTitles) >= 3) {
+                break;
             }
         }
+
+        if (!$insidePlan) {
+            continue;
+        }
+
+        if (!isTopicNumberLine($line)) {
+            continue;
+        }
+
+        $topicLines = [];
+        for ($cursor = $index + 1; $cursor < count($lines); $cursor++) {
+            $candidateLine = $lines[$cursor];
+
+            if (isTopicNumberLine($candidateLine) || isTopicBreakLine($candidateLine)) {
+                break;
+            }
+
+            if (isPureNumericLine($candidateLine) || isTopicTaskLine($candidateLine) || isTopicHeaderLine($candidateLine)) {
+                continue;
+            }
+
+            $cleanedLine = trim($candidateLine, " \t\n\r\0\x0B-–—.;,");
+            if ($cleanedLine === '') {
+                continue;
+            }
+
+            $topicLines[] = $cleanedLine;
+
+            if (count($topicLines) >= 3) {
+                break;
+            }
+        }
+
+        $topicTitle = buildTopicTitle($topicLines);
+        if ($topicTitle !== '') {
+            $collectedTitles[] = $topicTitle;
+        }
     }
-    
+
+    $collectedTitles = deduplicateTextValues($collectedTitles);
+
+    $topics = [];
     $index = 1;
-    foreach ($foundTopics as $title) {
+    foreach ($collectedTitles as $title) {
         $topics[] = [
             'code' => strtoupper(substr(preg_replace('/[^a-z0-9]/ui', '', $disciplineName), 0, 6)) . '_T' . $index,
             'title' => $title,
@@ -3217,7 +3356,7 @@ function parseSyllabusTopics(string $text, string $disciplineName, int $courseNu
         ];
         $index++;
     }
-    
+
     if (empty($topics)) {
         $topics[] = [
             'code' => strtoupper(substr(preg_replace('/[^a-z0-9]/ui', '', $disciplineName), 0, 6)) . '_AUTO',
@@ -3225,44 +3364,251 @@ function parseSyllabusTopics(string $text, string $disciplineName, int $courseNu
             'keywords' => implode(',', array_slice(extractKeywords($text, $disciplineName), 0, 10))
         ];
     }
-    
+
     return $topics;
 }
 
 function parseSyllabusQuestions(string $text): array
 {
+    $lines = splitStructuredLines($text);
     $questions = [];
-    
-    $sectionText = $text;
-    
-    if (preg_match('/Контрольно-измерительные средства.*?(?=\n\s*$|\Z)/s', $text, $match)) {
-        $sectionText = $match[0];
-    }
-    elseif (preg_match('/Приложения.*?(?=\n\s*$|\Z)/s', $text, $match)) {
-        $sectionText = $match[0];
-    }
-    
-    
-    $pattern = '/(\d+)\.\s*(.*?)(?=\n\s*\d+\.\s*|\n\s*$|\Z)/s';
-    
-    if (preg_match_all($pattern, $sectionText, $matches, PREG_SET_ORDER)) {
-        foreach ($matches as $match) {
-            $questionText = trim($match[2]);
-            
-            $questionText = preg_replace('/\s+/', ' ', $questionText);
-            
-            if (mb_strlen($questionText) > 30) {
+    $insideQuestionBlock = false;
+    $questionMarkers = [
+        'контрольно-измерительные средства',
+        'контрольно измерительные средства',
+        'приложение 2',
+        'примеры заданий',
+        'экзаменационные вопросы',
+        'вопросы',
+        'сұрақтар',
+        'сұрақ-жауап',
+        'сұрақ жауап',
+    ];
+
+    foreach ($lines as $line) {
+        $normalizedLine = mb_strtolower($line, 'UTF-8');
+
+        foreach ($questionMarkers as $marker) {
+            if (mb_strpos($normalizedLine, $marker, 0, 'UTF-8') !== false) {
+                $insideQuestionBlock = true;
+                continue 2;
+            }
+        }
+
+        if (!$insideQuestionBlock) {
+            continue;
+        }
+
+        if (preg_match('/^(приложение\s*[345]|қосымша\s*[345]|тематический план|тақырыптық жоспар)/ui', $line)) {
+            break;
+        }
+
+        $candidate = cleanQuestionCandidate($line);
+        if ($candidate === '') {
+            continue;
+        }
+
+        if (preg_match('/^(?:\d+|[а-яәіңғүұқөһa-z])[\.\)]\s+/ui', $candidate)) {
+            $number = extractLeadingNumber($candidate);
+            $textValue = trim(preg_replace('/^(?:\d+|[а-яәіңғүұқөһa-z])[\.\)]\s+/ui', '', $candidate));
+            if (mb_strlen($textValue, 'UTF-8') >= 25) {
                 $questions[] = [
-                    'text' => $questionText,
+                    'text' => $textValue,
                     'type' => 'syllabus_question',
-                    'number' => (int)$match[1]
+                    'number' => $number,
                 ];
             }
         }
-    } else {
     }
-    
-    return $questions;
+
+    if (!$questions) {
+        $tailLines = array_slice($lines, (int)max(0, count($lines) * 0.65));
+        foreach ($tailLines as $line) {
+            $candidate = cleanQuestionCandidate($line);
+            if ($candidate === '') {
+                continue;
+            }
+
+            if (preg_match('/^\d+[\.\)]\s+/u', $candidate)) {
+                $number = extractLeadingNumber($candidate);
+                $textValue = trim(preg_replace('/^\d+[\.\)]\s+/u', '', $candidate));
+                if (mb_strlen($textValue, 'UTF-8') >= 40) {
+                    $questions[] = [
+                        'text' => $textValue,
+                        'type' => 'syllabus_question',
+                        'number' => $number,
+                    ];
+                }
+            }
+        }
+    }
+
+    return deduplicateStructuredItems($questions, 'text');
+}
+
+function normalizeStructuredText(string $text): string
+{
+    $text = str_replace(["\r\n", "\r"], "\n", $text);
+    $text = str_replace("\u{00A0}", ' ', $text);
+    $text = preg_replace("/[ \t]+/u", ' ', $text);
+    $text = preg_replace("/\n{2,}/u", "\n", $text);
+    $lines = preg_split('/\n/u', $text) ?: [];
+    $cleanLines = [];
+
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line !== '') {
+            $cleanLines[] = $line;
+        }
+    }
+
+    return implode("\n", $cleanLines);
+}
+
+function splitStructuredLines(string $text): array
+{
+    $normalizedText = normalizeStructuredText($text);
+    return preg_split('/\n/u', $normalizedText) ?: [];
+}
+
+function cleanTopicCandidate(string $line): string
+{
+    if (!preg_match('/^\s*\d+[\.\)]/u', $line)) {
+        return '';
+    }
+
+    $line = preg_replace('/^\s*\d+[\.\)]\s*/u', '', $line);
+    $line = preg_replace('/^(?:[A-ZА-ЯЁӘІҢҒҮҰҚӨҺ]{1,8}|[A-ZА-ЯЁӘІҢҒҮҰҚӨҺ]{1,8}\s+[A-ZА-ЯЁӘІҢҒҮҰҚӨҺ]{1,8})\s+/u', '', $line);
+    $line = preg_split('/(?:Приложение|Қосымша|Тақырыпты|Тақырып бойынша|Ситуациялық|Ауызша|Жағдайлық|Microsoft Power Point|Электронды тасымалдаудағы|Электронды әдебиетпен)/ui', $line)[0] ?? $line;
+    $line = preg_replace('/\s+\d+(?:\s+\d+){0,6}\s*$/u', '', $line);
+    $line = trim($line, " \t\n\r\0\x0B-–—.;,");
+
+    return mb_strlen($line, 'UTF-8') >= 12 ? $line : '';
+}
+
+function isTopicNumberLine(string $line): bool
+{
+    return (bool)preg_match('/^\d+\s*[\.\)]\s*$/u', trim($line));
+}
+
+function isPureNumericLine(string $line): bool
+{
+    return (bool)preg_match('/^\d+(?:\s+\d+){0,6}$/u', trim($line));
+}
+
+function isTopicTaskLine(string $line): bool
+{
+    return (bool)preg_match('/(тақырыпты|ситуац|ауызша|жағдайлық|презентац|powerpoint|moodle|алгоритм|электронды|приложение|қосымша|сұрақтарына жауап|оқытушы жетекшілігімен)/ui', $line);
+}
+
+function isTopicHeaderLine(string $line): bool
+{
+    return (bool)preg_match('/^(№|п\/п|бөлім|раздел|тақырып|тема|тапсырмалар|задания|дәріс|лекции|пз|сөож|сро|ср оп|па|всего часов|барылық сағат|жалпы)$/ui', trim($line));
+}
+
+function isTopicBreakLine(string $line): bool
+{
+    return (bool)preg_match('/^(аралық бақылау|итоговый контроль|всего[:]?|барлығы[:]?|приложение\s*\d+|қосымша\s*\d+)/ui', trim($line));
+}
+
+function buildTopicTitle(array $lines): string
+{
+    if (!$lines) {
+        return '';
+    }
+
+    if (count($lines) >= 2 && isLikelyTopicSectionLabel($lines[0])) {
+        array_shift($lines);
+    }
+
+    if (!$lines) {
+        return '';
+    }
+
+    $titleParts = [];
+    foreach ($lines as $line) {
+        if (isLikelyTopicSectionLabel($line) && $titleParts) {
+            continue;
+        }
+
+        $titleParts[] = $line;
+
+        if (count($titleParts) >= 2) {
+            break;
+        }
+    }
+
+    $title = trim(implode(' ', $titleParts));
+    $title = preg_replace('/\s+/u', ' ', $title);
+    $title = trim((string)$title, " \t\n\r\0\x0B-–—.;,");
+
+    return mb_strlen((string)$title, 'UTF-8') >= 12 ? (string)$title : '';
+}
+
+function isLikelyTopicSectionLabel(string $line): bool
+{
+    $line = trim($line);
+
+    if ($line === '') {
+        return false;
+    }
+
+    if (preg_match('/^(жж|онк|био|пат|кредит\s*\d+)/ui', $line)) {
+        return true;
+    }
+
+    return (bool)preg_match('/^(патологическая физиология|патологическая анатомия|биологическая химия|жүйке жүйесі|патологиялық физиология|патологиялық анатомия)$/ui', $line);
+}
+
+function cleanQuestionCandidate(string $line): string
+{
+    $line = trim($line);
+    $line = preg_replace('/\s+/u', ' ', $line);
+    return $line;
+}
+
+function deduplicateTextValues(array $values): array
+{
+    $uniqueValues = [];
+    $seen = [];
+
+    foreach ($values as $value) {
+        $normalized = mb_strtolower(trim($value), 'UTF-8');
+        if ($normalized === '' || isset($seen[$normalized])) {
+            continue;
+        }
+        $seen[$normalized] = true;
+        $uniqueValues[] = trim($value);
+    }
+
+    return $uniqueValues;
+}
+
+function deduplicateStructuredItems(array $items, string $field): array
+{
+    $uniqueItems = [];
+    $seen = [];
+
+    foreach ($items as $item) {
+        $value = trim((string)($item[$field] ?? ''));
+        $normalized = mb_strtolower($value, 'UTF-8');
+        if ($normalized === '' || isset($seen[$normalized])) {
+            continue;
+        }
+        $seen[$normalized] = true;
+        $uniqueItems[] = $item;
+    }
+
+    return $uniqueItems;
+}
+
+function extractLeadingNumber(string $line): ?int
+{
+    if (preg_match('/^(\d+)[\.\)]/u', $line, $match)) {
+        return (int)$match[1];
+    }
+
+    return null;
 }
 
 function readOdsFile(string $filePath): array {

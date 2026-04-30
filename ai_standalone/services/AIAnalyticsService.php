@@ -8,11 +8,13 @@ final class AIAnalyticsService
     private ?int $currentImportId = null;
     private RuleClassifierService $ruleClassifier;
     private int $minStudentsForDiscrimination = 10;
+    private array $analyticsConfig;
 
     public function __construct(private PDO $databaseConnection, ?int $importId = null)
     {
         $this->currentImportId = $importId;
         $this->ruleClassifier = new RuleClassifierService($databaseConnection);
+        $this->analyticsConfig = require __DIR__ . '/../config.php';
     }
 
     public function setMinStudentsForDiscrimination(int $value): void
@@ -45,6 +47,11 @@ final class AIAnalyticsService
 
     public function getQuestionAnalysisList(): array
     {
+        $importIdentifier = $this->currentImportId;
+        if ($importIdentifier === null) {
+            return [];
+        }
+
         try {
             $sqlQuery = "
                 SELECT hq.question_id, hq.question_text, hq.syllabus_topic_id, hq.max_score,
@@ -52,12 +59,22 @@ final class AIAnalyticsService
                        AVG(r.received_score) as avg_score, COUNT(DISTINCT r.student_id) as attempts
                 FROM hier_questions hq
                 INNER JOIN ai_syllabus_topics s ON s.syllabus_topic_id = hq.syllabus_topic_id
-                LEFT JOIN raw_exam_results r ON r.question_id = hq.question_id
+                INNER JOIN (
+                    SELECT DISTINCT question_id
+                    FROM raw_exam_results
+                    WHERE import_id = :source_import_id
+                ) source_r ON source_r.question_id = hq.question_id
+                LEFT JOIN raw_exam_results r ON r.question_id = hq.question_id AND r.import_id = :stats_import_id
                 WHERE hq.syllabus_topic_id IS NOT NULL
                 GROUP BY hq.question_id, s.syllabus_topic_id
                 ORDER BY hq.question_id
             ";
-            return $this->databaseConnection->query($sqlQuery)->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $queryStatement = $this->databaseConnection->prepare($sqlQuery);
+            $queryStatement->execute([
+                ':source_import_id' => $importIdentifier,
+                ':stats_import_id' => $importIdentifier,
+            ]);
+            return $queryStatement->fetchAll(PDO::FETCH_ASSOC) ?: [];
         } catch (Throwable $exception) {
             error_log('Ошибка при получении списка вопросов для анализа: ' . $exception->getMessage());
             return [];
@@ -66,16 +83,30 @@ final class AIAnalyticsService
 
     public function validateQuestionSyllabusAlignment(int $questionId): ?array
     {
+        $importIdentifier = $this->currentImportId;
+        if ($importIdentifier === null) {
+            return null;
+        }
+
         $queryStatement = $this->databaseConnection->prepare(
             "SELECT hq.*, s.keywords, s.title AS syllabus_title, s.topic_code,
                     AVG(r.received_score) as avg_score, COUNT(DISTINCT r.student_id) as attempts
-             FROM hier_questions hq
-             LEFT JOIN ai_syllabus_topics s ON s.syllabus_topic_id = hq.syllabus_topic_id
-             LEFT JOIN raw_exam_results r ON r.question_id = hq.question_id
-             WHERE hq.question_id = :id
-             GROUP BY hq.question_id, s.syllabus_topic_id"
+              FROM hier_questions hq
+              LEFT JOIN ai_syllabus_topics s ON s.syllabus_topic_id = hq.syllabus_topic_id
+              INNER JOIN (
+                  SELECT DISTINCT question_id
+                  FROM raw_exam_results
+                  WHERE import_id = :source_import_id
+              ) source_r ON source_r.question_id = hq.question_id
+              LEFT JOIN raw_exam_results r ON r.question_id = hq.question_id AND r.import_id = :stats_import_id
+              WHERE hq.question_id = :id
+              GROUP BY hq.question_id, s.syllabus_topic_id"
         );
-        $queryStatement->execute([':id' => $questionId]);
+        $queryStatement->execute([
+            ':id' => $questionId,
+            ':source_import_id' => $importIdentifier,
+            ':stats_import_id' => $importIdentifier,
+        ]);
         $questionData = $queryStatement->fetch(PDO::FETCH_ASSOC);
         if (!$questionData) return null;
 
@@ -97,16 +128,17 @@ final class AIAnalyticsService
             $validationIssues[] = 'Вопрос не привязан к теме силлабуса - невозможно проверить соответствие программе';
         }
 
-        $keywordAlignmentScore = 0;
-        if (!empty($questionData['syllabus_title']) && !empty($questionData['keywords'])) {
-            $keywordAlignmentScore = 1.0;
-        }
+        $keywordAlignmentScore = $this->calculateKeywordCoverage(
+            (string)($questionData['question_text'] ?? ''),
+            (string)($questionData['syllabus_title'] ?? ''),
+            (string)($questionData['keywords'] ?? '')
+        );
 
         return [
             'question_id' => $questionId,
             'syllabus_title' => $questionData['syllabus_title'] ?? '—',
             'topic_code' => $questionData['topic_code'] ?? '—',
-            'keyword_coverage' => $keywordAlignmentScore * 100,
+            'keyword_coverage' => round($keywordAlignmentScore * 100, 1),
             'avg_score' => round($averageScore, 2),
             'attempts' => $studentAttempts,
             'issues' => $validationIssues,
@@ -154,29 +186,24 @@ final class AIAnalyticsService
         $queryStatement->execute([':imp' => $importIdentifier]);
         $questionStatistics = $queryStatement->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        $maximumScoreMapping = [];
-        try {
-            $maxScoreQuery = $this->databaseConnection->query("SELECT question_id, max_score FROM ai_question_ai")->fetchAll(PDO::FETCH_KEY_PAIR);
-            foreach ($maxScoreQuery as $questionId => $maxScore) {
-                $maximumScoreMapping[(int)$questionId] = (float)$maxScore;
-            }
-        } catch (Throwable $exception) {
-            error_log('Ошибка при получении максимальных баллов: ' . $exception->getMessage());
-        }
+        $maximumScoreMapping = $this->getQuestionMaxScores($importIdentifier);
 
         $qualityAnalysisResults = [];
+        $easyThreshold = (float)($this->analyticsConfig['coefficients']['quality']['easy_threshold'] ?? 0.92);
+        $hardThreshold = (float)($this->analyticsConfig['coefficients']['quality']['hard_threshold'] ?? 0.35);
+
         foreach ($questionStatistics as $statRow) {
             $questionIdentifier = (int)$statRow['question_id'];
             $maxPossibleScore = $maximumScoreMapping[$questionIdentifier] ?? 100.0;
             $meanAchievedScore = (float)$statRow['mean_score'];
-            $successRatio = $meanAchievedScore / $maxPossibleScore;
+            $successRatio = $maxPossibleScore > 0 ? $meanAchievedScore / $maxPossibleScore : 0.0;
             $qualityFlag = 'normal';
             $qualityReason = '';
 
-            if ($successRatio >= 0.92) {
+            if ($successRatio >= $easyThreshold) {
                 $qualityFlag = 'too_easy';
                 $qualityReason = 'Очень высокий средний балл — вопрос почти не дифференцирует студентов по уровню знаний';
-            } elseif ($successRatio <= 0.35) {
+            } elseif ($successRatio <= $hardThreshold) {
                 $qualityFlag = 'too_hard';
                 $qualityReason = 'Низкий средний балл — проверьте формулировку вопроса и его соответствие учебной программе';
             }
@@ -251,12 +278,12 @@ final class AIAnalyticsService
         return $discriminationResults;
     }
 
-    private function studentDisciplineTotals(int $importId): array
+    private function studentExamTotals(int $importId): array
     {
         $queryStatement = $this->databaseConnection->prepare(
-            "SELECT student_id, AVG(discipline_score) AS total
+            "SELECT student_id, SUM(received_score) AS total
              FROM raw_exam_results
-             WHERE import_id = :imp AND student_id IS NOT NULL
+             WHERE import_id = :imp AND student_id IS NOT NULL AND received_score IS NOT NULL
              GROUP BY student_id"
         );
         $queryStatement->execute([':imp' => $importId]);
@@ -273,9 +300,9 @@ final class AIAnalyticsService
         $importIdentifier = $this->currentImportId;
         if ($importIdentifier === null) return [];
 
-        $studentDisciplineScores = $this->studentDisciplineTotals($importIdentifier);
+        $studentExamScores = $this->studentExamTotals($importIdentifier);
         $scoreMapping = [];
-        foreach ($studentDisciplineScores as $studentData) {
+        foreach ($studentExamScores as $studentData) {
             $scoreMapping[$studentData['student_id']] = $studentData['total'];
         }
         $queryStatement = $this->databaseConnection->prepare(
@@ -293,10 +320,19 @@ final class AIAnalyticsService
         }
         $correlationResults = [];
         foreach ($questionScorePairs as $questionId => $scorePairs) {
+            $adjustedPairs = [];
+            foreach ($scorePairs as $scorePair) {
+                $adjustedPairs[] = [
+                    'x' => $scorePair['x'],
+                    'y' => $scorePair['y'] - $scorePair['x'],
+                ];
+            }
+
+            $correlationValue = round(self::pearson($adjustedPairs), 4);
             $correlationResults[] = [
                 'question_id' => $questionId,
-                'r' => round(self::pearson($scorePairs), 4),
-                'flag' => abs(self::pearson($scorePairs)) < 0.12 ? 'low_corr' : 'ok',
+                'r' => $correlationValue,
+                'flag' => abs($correlationValue) < 0.12 ? 'low_corr' : 'ok',
             ];
         }
 
@@ -352,10 +388,12 @@ final class AIAnalyticsService
             );
             $queryStatement->execute([':imp' => $importIdentifier]);
 
-            $studentDisciplineScores = $this->studentDisciplineTotals($importIdentifier);
+            $studentExamScores = $this->studentExamTotals($importIdentifier);
             $scoreMapping = [];
-            foreach ($studentDisciplineScores as $studentData) { $scoreMapping[$studentData['student_id']] = $studentData['total']; }
-            $medianScore = self::calculateMedian(array_column($studentDisciplineScores, 'total'));
+            foreach ($studentExamScores as $studentData) { $scoreMapping[$studentData['student_id']] = $studentData['total']; }
+            $medianScore = self::calculateMedian(array_column($studentExamScores, 'total'));
+            $systemicAverageThreshold = (float)($this->analyticsConfig['coefficients']['risk']['systemic_avg'] ?? 45);
+            $spotMinimumThreshold = (float)($this->analyticsConfig['coefficients']['risk']['spot_min'] ?? 35);
 
             $riskAnalysisResults = [];
             while ($resultRow = $queryStatement->fetch(PDO::FETCH_ASSOC)) {
@@ -366,10 +404,10 @@ final class AIAnalyticsService
                 $totalDisciplineScore = $scoreMapping[$studentId] ?? $averageItemScore;
                 $riskPatternType = 'ok';
                 $riskNotes = [];
-                if ($averageItemScore < 45 && $totalDisciplineScore < $medianScore) {
+                if ($averageItemScore < $systemicAverageThreshold && $totalDisciplineScore < $medianScore) {
                     $riskPatternType = 'systemic';
                     $riskNotes[] = 'Низкие баллы по большинству вопросов - возможны системные проблемы с подготовкой';
-                } elseif ($minimumItemScore < 35 && $averageItemScore > 60) {
+                } elseif ($minimumItemScore < $spotMinimumThreshold && $averageItemScore > max($systemicAverageThreshold + 15, 60)) {
                     $riskPatternType = 'spot';
                     $riskNotes[] = 'Обнаружены значительные провалы по отдельным вопросам';
                 }
@@ -668,6 +706,11 @@ final class AIAnalyticsService
 
     public function getCriteriaPerformanceAnalysis(): array
     {
+        $importIdentifier = $this->currentImportId;
+        if ($importIdentifier === null) {
+            return [];
+        }
+
         try {
             $query = "
                 SELECT ec.criteria_id, ec.name_russian, ec.name_kazakh, ec.name_english, ec.weight_percent,
@@ -676,11 +719,25 @@ final class AIAnalyticsService
                        STDDEV_SAMP(ed.score) as std_score
                 FROM evaluation_details ed
                 JOIN evaluation_criteria ec ON ec.criteria_id = ed.criteria_id
+                JOIN work_mapping wm ON wm.work_id = ed.work_id
+                WHERE wm.import_id = :imp
                 GROUP BY ec.criteria_id
                 ORDER BY ec.criteria_id
             ";
-            $stmt = $this->databaseConnection->query($query);
-            $results = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $results = $this->fetchCriteriaPerformanceRows($query, [':imp' => $importIdentifier]);
+
+            if (!$results) {
+                $results = $this->fetchCriteriaPerformanceRows("
+                    SELECT ec.criteria_id, ec.name_russian, ec.name_kazakh, ec.name_english, ec.weight_percent,
+                           AVG(ed.score) as avg_score, COUNT(*) as evaluations,
+                           MIN(ed.score) as min_score, MAX(ed.score) as max_score,
+                           STDDEV_SAMP(ed.score) as std_score
+                    FROM evaluation_details ed
+                    JOIN evaluation_criteria ec ON ec.criteria_id = ed.criteria_id
+                    GROUP BY ec.criteria_id
+                    ORDER BY ec.criteria_id
+                ");
+            }
             
             $analysis = [];
             foreach ($results as $row) {
@@ -722,6 +779,11 @@ final class AIAnalyticsService
 
     public function getStudentAnswerAnalysis(): array
     {
+        $importIdentifier = $this->currentImportId;
+        if ($importIdentifier === null) {
+            return [];
+        }
+
         try {
             $query = "
                 SELECT sa.language, COUNT(*) as answers,
@@ -729,11 +791,24 @@ final class AIAnalyticsService
                        AVG(sa.plagiarism_penalty) as avg_penalty,
                        COUNT(CASE WHEN sa.plagiarism_penalty > 0 THEN 1 END) as plagiarism_count
                 FROM student_answers sa
+                JOIN work_mapping wm ON wm.work_id = sa.work_id
+                WHERE wm.import_id = :imp
                 GROUP BY sa.language
                 ORDER BY answers DESC
             ";
-            $stmt = $this->databaseConnection->query($query);
-            $results = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $results = $this->fetchStudentAnswerRows($query, [':imp' => $importIdentifier]);
+
+            if (!$results) {
+                $results = $this->fetchStudentAnswerRows("
+                    SELECT sa.language, COUNT(*) as answers,
+                           AVG(sa.final_score) as avg_score,
+                           AVG(sa.plagiarism_penalty) as avg_penalty,
+                           COUNT(CASE WHEN sa.plagiarism_penalty > 0 THEN 1 END) as plagiarism_count
+                    FROM student_answers sa
+                    GROUP BY sa.language
+                    ORDER BY answers DESC
+                ");
+            }
             
             $analysis = [];
             foreach ($results as $row) {
@@ -759,6 +834,11 @@ final class AIAnalyticsService
 
     public function getCriteriaByQuestionAnalysis(): array
     {
+        $importIdentifier = $this->currentImportId;
+        if ($importIdentifier === null) {
+            return [];
+        }
+
         try {
             $query = "
                 SELECT w.question_id, ec.criteria_id, ec.name_russian,
@@ -766,11 +846,23 @@ final class AIAnalyticsService
                 FROM evaluation_details ed
                 JOIN evaluation_criteria ec ON ec.criteria_id = ed.criteria_id
                 JOIN work_mapping w ON w.work_id = ed.work_id
+                WHERE w.import_id = :imp
                 GROUP BY w.question_id, ec.criteria_id
                 ORDER BY w.question_id, ec.criteria_id
             ";
-            $stmt = $this->databaseConnection->query($query);
-            $results = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $results = $this->fetchCriteriaByQuestionRows($query, [':imp' => $importIdentifier]);
+
+            if (!$results) {
+                $results = $this->fetchCriteriaByQuestionRows("
+                    SELECT w.question_id, ec.criteria_id, ec.name_russian,
+                           AVG(ed.score) as avg_score, COUNT(*) as evaluations
+                    FROM evaluation_details ed
+                    JOIN evaluation_criteria ec ON ec.criteria_id = ed.criteria_id
+                    JOIN work_mapping w ON w.work_id = ed.work_id
+                    GROUP BY w.question_id, ec.criteria_id
+                    ORDER BY w.question_id, ec.criteria_id
+                ");
+            }
             
             $analysis = [];
             foreach ($results as $row) {
@@ -797,5 +889,74 @@ final class AIAnalyticsService
             error_log('Error in criteria by question analysis: ' . $e->getMessage());
             return [];
         }
+    }
+
+    private function getQuestionMaxScores(int $importIdentifier): array
+    {
+        $maximumScoreMapping = [];
+
+        try {
+            $queryStatement = $this->databaseConnection->prepare("
+                SELECT DISTINCT hq.question_id, COALESCE(NULLIF(hq.max_score, 0), 100) AS max_score
+                FROM hier_questions hq
+                JOIN raw_exam_results r ON r.question_id = hq.question_id
+                WHERE r.import_id = :imp
+            ");
+            $queryStatement->execute([':imp' => $importIdentifier]);
+
+            foreach ($queryStatement->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+                $maximumScoreMapping[(int)$row['question_id']] = (float)$row['max_score'];
+            }
+        } catch (Throwable $exception) {
+            error_log('Ошибка при получении максимальных баллов: ' . $exception->getMessage());
+        }
+
+        return $maximumScoreMapping;
+    }
+
+    private function calculateKeywordCoverage(string $questionText, string $syllabusTitle, string $keywords): float
+    {
+        $referenceText = trim($syllabusTitle . ' ' . $keywords);
+        $questionTokens = $this->tokenizeForAnalytics($questionText);
+        $referenceTokens = $this->tokenizeForAnalytics($referenceText);
+
+        if (!$questionTokens || !$referenceTokens) {
+            return 0.0;
+        }
+
+        $overlapCount = count(array_intersect($referenceTokens, $questionTokens));
+        return $overlapCount / count($referenceTokens);
+    }
+
+    private function tokenizeForAnalytics(string $text): array
+    {
+        $normalizedText = mb_strtolower($text, 'UTF-8');
+        $cleanedText = preg_replace('/[^\p{L}\p{N}\s]/u', ' ', $normalizedText) ?? '';
+        $tokens = preg_split('/\s+/', $cleanedText, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $stopWords = ['и', 'в', 'на', 'с', 'для', 'по', 'из', 'к', 'а', 'the', 'and', 'of', 'to', 'in', 'for', 'with', 'on', 'at', 'from', 'by'];
+        $filteredTokens = array_filter($tokens, static fn (string $token): bool => mb_strlen($token, 'UTF-8') > 2 && !in_array($token, $stopWords, true));
+
+        return array_values(array_unique($filteredTokens));
+    }
+
+    private function fetchCriteriaPerformanceRows(string $query, array $params = []): array
+    {
+        $statement = $this->databaseConnection->prepare($query);
+        $statement->execute($params);
+        return $statement->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    private function fetchStudentAnswerRows(string $query, array $params = []): array
+    {
+        $statement = $this->databaseConnection->prepare($query);
+        $statement->execute($params);
+        return $statement->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    private function fetchCriteriaByQuestionRows(string $query, array $params = []): array
+    {
+        $statement = $this->databaseConnection->prepare($query);
+        $statement->execute($params);
+        return $statement->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 }

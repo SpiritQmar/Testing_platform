@@ -47,5 +47,5 @@ docker-compose up -d
 ```bash
 cd ai_standalone/python_services
 pip install -r requirements.txt
-python embeddings_api.py
+python -m uvicorn embeddings_api:app --host 127.0.0.1 --port 8000
 ```

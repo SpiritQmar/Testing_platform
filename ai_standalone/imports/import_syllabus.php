@@ -46,9 +46,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['syllabus_file']) && 
 
             $topics = parseSyllabusTopics($text, $disciplineName, $courseNumber);
             $questions = parseSyllabusQuestions($text);
-            
-            foreach ($questions as $q) {
-            }
 
             $pdo->beginTransaction();
             
@@ -661,12 +658,15 @@ function extractDocxText(string $filePath): string
     if (!$xmlContent) {
         throw new Exception('File does not contain document.xml');
     }
-    
+
+    $xmlContent = preg_replace('/<\/w:p>/i', "\n", $xmlContent);
+    $xmlContent = preg_replace('/<\/w:tr>/i', "\n", $xmlContent);
+    $xmlContent = preg_replace('/<\/w:tc>/i', "\t", $xmlContent);
+    $xmlContent = preg_replace('/<w:tab[^>]*\/>/i', "\t", $xmlContent);
     $xmlContent = strip_tags($xmlContent);
     $xmlContent = html_entity_decode($xmlContent, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    $xmlContent = preg_replace('/\s+/', ' ', $xmlContent);
-    
-    return trim($xmlContent);
+
+    return normalizeStructuredText($xmlContent);
 }
 
 function extractDocText(string $filePath): string
@@ -706,48 +706,92 @@ function extractOdtText(string $filePath): string
     if (!$xmlContent) {
         throw new Exception('File does not contain content.xml');
     }
-    
-    preg_match_all('/<text:p[^>]*>(.*?)<\/text:p>/s', $xmlContent, $matches);
-    $text = implode(' ', $matches[1]);
-    $text = strip_tags($text);
-    
-    return trim($text);
+
+    $xmlContent = preg_replace('/<\/text:p>/i', "\n", $xmlContent);
+    $xmlContent = preg_replace('/<\/table:table-row>/i', "\n", $xmlContent);
+    $xmlContent = preg_replace('/<\/table:table-cell>/i', "\t", $xmlContent);
+    $text = strip_tags($xmlContent);
+    $text = html_entity_decode($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+    return normalizeStructuredText($text);
 }
 
 function parseSyllabusQuestions(string $text): array
 {
+    $lines = splitStructuredLines($text);
     $questions = [];
-    
-    $sectionText = $text;
-    
-    if (preg_match('/Контрольно-измерительные средства.*?(?=\n\s*$|\Z)/s', $text, $match)) {
-        $sectionText = $match[0];
-    }
-    elseif (preg_match('/Приложения.*?(?=\n\s*$|\Z)/s', $text, $match)) {
-        $sectionText = $match[0];
-    }
-    
-    
-    $pattern = '/(\d+)\.\s*(.*?)(?=\n\s*\d+\.\s*|\n\s*$|\Z)/s';
-    
-    if (preg_match_all($pattern, $sectionText, $matches, PREG_SET_ORDER)) {
-        foreach ($matches as $match) {
-            $questionText = trim($match[2]);
-            
-            $questionText = preg_replace('/\s+/', ' ', $questionText);
-            
-            if (mb_strlen($questionText) > 30) {
+    $insideQuestionBlock = false;
+    $questionMarkers = [
+        'контрольно-измерительные средства',
+        'контрольно измерительные средства',
+        'приложение 2',
+        'примеры заданий',
+        'экзаменационные вопросы',
+        'вопросы',
+        'сұрақтар',
+        'сұрақ-жауап',
+        'сұрақ жауап',
+    ];
+
+    foreach ($lines as $line) {
+        $normalizedLine = mb_strtolower($line, 'UTF-8');
+
+        foreach ($questionMarkers as $marker) {
+            if (mb_strpos($normalizedLine, $marker, 0, 'UTF-8') !== false) {
+                $insideQuestionBlock = true;
+                continue 2;
+            }
+        }
+
+        if (!$insideQuestionBlock) {
+            continue;
+        }
+
+        if (preg_match('/^(приложение\s*[345]|қосымша\s*[345]|тематический план|тақырыптық жоспар)/ui', $line)) {
+            break;
+        }
+
+        $candidate = cleanQuestionCandidate($line);
+        if ($candidate === '') {
+            continue;
+        }
+
+        if (preg_match('/^(?:\d+|[а-яәіңғүұқөһa-z])[\.\)]\s+/ui', $candidate, $match)) {
+            $number = extractLeadingNumber($candidate);
+            $textValue = trim(preg_replace('/^(?:\d+|[а-яәіңғүұқөһa-z])[\.\)]\s+/ui', '', $candidate));
+            if (mb_strlen($textValue, 'UTF-8') >= 25) {
                 $questions[] = [
-                    'text' => $questionText,
+                    'text' => $textValue,
                     'type' => 'syllabus_question',
-                    'number' => (int)$match[1]
+                    'number' => $number,
                 ];
             }
         }
-    } else {
     }
-    
-    return $questions;
+
+    if (!$questions) {
+        $tailLines = array_slice($lines, (int)max(0, count($lines) * 0.65));
+        foreach ($tailLines as $line) {
+            $candidate = cleanQuestionCandidate($line);
+            if ($candidate === '') {
+                continue;
+            }
+
+            if (preg_match('/^\d+[\.\)]\s+/u', $candidate)) {
+                $number = extractLeadingNumber($candidate);
+                $textValue = trim(preg_replace('/^\d+[\.\)]\s+/u', '', $candidate));
+                if (mb_strlen($textValue, 'UTF-8') >= 40) {
+                    $questions[] = [
+                        'text' => $textValue,
+                        'type' => 'syllabus_question',
+                        'number' => $number,
+                    ];
+                }
+            }
+        }
+    }
+
+    return deduplicateStructuredItems($questions, 'text');
 }
 
 function extractKeywords(string $text, string $disciplineName): array
@@ -776,28 +820,67 @@ function extractKeywords(string $text, string $disciplineName): array
 
 function parseSyllabusTopics(string $text, string $disciplineName, int $courseNumber): array
 {
-    $topics = [];
-    
-    $patterns = [
-        '/(\d+[\.\)]\s*)([A-Za-z][^\n\.]{10,100})/u',
-        '/(Topic\s*\d*[:\.\s]*)([A-Za-z][^\n\.]{10,100})/ui',
-        '/(Section\s*\d*[:\.\s]*)([A-Za-z][^\n\.]{10,100})/ui',
-    ];
-    
-    $foundTopics = [];
-    foreach ($patterns as $pattern) {
-        if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
-            foreach ($matches as $match) {
-                $title = trim($match[2]);
-                if (!in_array($title, $foundTopics) && mb_strlen($title) >= 10) {
-                    $foundTopics[] = $title;
-                }
+    $lines = splitStructuredLines($text);
+    $collectedTitles = [];
+    $insidePlan = false;
+
+    for ($index = 0; $index < count($lines); $index++) {
+        $line = $lines[$index];
+
+        if (preg_match('/(тематический план|тақырыптық жоспар|план дисциплины|пәннің тақырыптық жоспары)/ui', $line)) {
+            $insidePlan = true;
+            continue;
+        }
+
+        if ($insidePlan && preg_match('/^(приложение\s*\d+|қосымша\s*\d+|всего[:]?|барлығы[:]?|аралық бақылау|итоговый контроль)/ui', $line)) {
+            if (count($collectedTitles) >= 3) {
+                break;
             }
         }
+
+        if (!$insidePlan) {
+            continue;
+        }
+
+        if (!isTopicNumberLine($line)) {
+            continue;
+        }
+
+        $topicLines = [];
+        for ($cursor = $index + 1; $cursor < count($lines); $cursor++) {
+            $candidateLine = $lines[$cursor];
+
+            if (isTopicNumberLine($candidateLine) || isTopicBreakLine($candidateLine)) {
+                break;
+            }
+
+            if (isPureNumericLine($candidateLine) || isTopicTaskLine($candidateLine) || isTopicHeaderLine($candidateLine)) {
+                continue;
+            }
+
+            $cleanedLine = trim($candidateLine, " \t\n\r\0\x0B-–—.;,");
+            if ($cleanedLine === '') {
+                continue;
+            }
+
+            $topicLines[] = $cleanedLine;
+
+            if (count($topicLines) >= 3) {
+                break;
+            }
+        }
+
+        $topicTitle = buildTopicTitle($topicLines);
+        if ($topicTitle !== '') {
+            $collectedTitles[] = $topicTitle;
+        }
     }
-    
+
+    $collectedTitles = deduplicateTextValues($collectedTitles);
+
+    $topics = [];
     $index = 1;
-    foreach ($foundTopics as $title) {
+    foreach ($collectedTitles as $title) {
         $topics[] = [
             'code' => strtoupper(substr(preg_replace('/[^a-z0-9]/ui', '', $disciplineName), 0, 6)) . '_T' . $index,
             'title' => $title,
@@ -805,7 +888,7 @@ function parseSyllabusTopics(string $text, string $disciplineName, int $courseNu
         ];
         $index++;
     }
-    
+
     if (empty($topics)) {
         $topics[] = [
             'code' => strtoupper(substr(preg_replace('/[^a-z0-9]/ui', '', $disciplineName), 0, 6)) . '_AUTO',
@@ -813,8 +896,173 @@ function parseSyllabusTopics(string $text, string $disciplineName, int $courseNu
             'keywords' => implode(',', array_slice(extractKeywords($text, $disciplineName), 0, 10))
         ];
     }
-    
+
     return $topics;
+}
+
+function normalizeStructuredText(string $text): string
+{
+    $text = str_replace(["\r\n", "\r"], "\n", $text);
+    $text = str_replace("\u{00A0}", ' ', $text);
+    $text = preg_replace("/[ \t]+/u", ' ', $text);
+    $text = preg_replace("/\n{2,}/u", "\n", $text);
+    $lines = preg_split('/\n/u', $text) ?: [];
+    $cleanLines = [];
+
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line !== '') {
+            $cleanLines[] = $line;
+        }
+    }
+
+    return implode("\n", $cleanLines);
+}
+
+function splitStructuredLines(string $text): array
+{
+    $normalizedText = normalizeStructuredText($text);
+    return preg_split('/\n/u', $normalizedText) ?: [];
+}
+
+function cleanTopicCandidate(string $line): string
+{
+    if (!preg_match('/^\s*\d+[\.\)]/u', $line)) {
+        return '';
+    }
+
+    $line = preg_replace('/^\s*\d+[\.\)]\s*/u', '', $line);
+    $line = preg_replace('/^(?:[A-ZА-ЯЁӘІҢҒҮҰҚӨҺ]{1,8}|[A-ZА-ЯЁӘІҢҒҮҰҚӨҺ]{1,8}\s+[A-ZА-ЯЁӘІҢҒҮҰҚӨҺ]{1,8})\s+/u', '', $line);
+    $line = preg_split('/(?:Приложение|Қосымша|Тақырыпты|Тақырып бойынша|Ситуациялық|Ауызша|Жағдайлық|Microsoft Power Point|Электронды тасымалдаудағы|Электронды әдебиетпен)/ui', $line)[0] ?? $line;
+    $line = preg_replace('/\s+\d+(?:\s+\d+){0,6}\s*$/u', '', $line);
+    $line = trim($line, " \t\n\r\0\x0B-–—.;,");
+
+    return mb_strlen($line, 'UTF-8') >= 12 ? $line : '';
+}
+
+function isTopicNumberLine(string $line): bool
+{
+    return (bool)preg_match('/^\d+\s*[\.\)]\s*$/u', trim($line));
+}
+
+function isPureNumericLine(string $line): bool
+{
+    return (bool)preg_match('/^\d+(?:\s+\d+){0,6}$/u', trim($line));
+}
+
+function isTopicTaskLine(string $line): bool
+{
+    return (bool)preg_match('/(тақырыпты|ситуац|ауызша|жағдайлық|презентац|powerpoint|moodle|алгоритм|электронды|приложение|қосымша|сұрақтарына жауап|оқытушы жетекшілігімен)/ui', $line);
+}
+
+function isTopicHeaderLine(string $line): bool
+{
+    return (bool)preg_match('/^(№|п\/п|бөлім|раздел|тақырып|тема|тапсырмалар|задания|дәріс|лекции|пз|сөож|сро|ср оп|па|всего часов|барылық сағат|жалпы)$/ui', trim($line));
+}
+
+function isTopicBreakLine(string $line): bool
+{
+    return (bool)preg_match('/^(аралық бақылау|итоговый контроль|всего[:]?|барлығы[:]?|приложение\s*\d+|қосымша\s*\d+)/ui', trim($line));
+}
+
+function buildTopicTitle(array $lines): string
+{
+    if (!$lines) {
+        return '';
+    }
+
+    if (count($lines) >= 2 && isLikelyTopicSectionLabel($lines[0])) {
+        array_shift($lines);
+    }
+
+    if (!$lines) {
+        return '';
+    }
+
+    $titleParts = [];
+    foreach ($lines as $line) {
+        if (isLikelyTopicSectionLabel($line) && $titleParts) {
+            continue;
+        }
+
+        $titleParts[] = $line;
+
+        if (count($titleParts) >= 2) {
+            break;
+        }
+    }
+
+    $title = trim(implode(' ', $titleParts));
+    $title = preg_replace('/\s+/u', ' ', $title);
+    $title = trim((string)$title, " \t\n\r\0\x0B-–—.;,");
+
+    return mb_strlen((string)$title, 'UTF-8') >= 12 ? (string)$title : '';
+}
+
+function isLikelyTopicSectionLabel(string $line): bool
+{
+    $line = trim($line);
+
+    if ($line === '') {
+        return false;
+    }
+
+    if (preg_match('/^(жж|онк|био|пат|кредит\s*\d+)/ui', $line)) {
+        return true;
+    }
+
+    return (bool)preg_match('/^(патологическая физиология|патологическая анатомия|биологическая химия|жүйке жүйесі|патологиялық физиология|патологиялық анатомия)$/ui', $line);
+}
+
+function cleanQuestionCandidate(string $line): string
+{
+    $line = trim($line);
+    $line = preg_replace('/\s+/u', ' ', $line);
+    return $line;
+}
+
+function deduplicateTextValues(array $values): array
+{
+    $uniqueValues = [];
+    $seen = [];
+
+    foreach ($values as $value) {
+        $normalized = mb_strtolower(trim($value), 'UTF-8');
+        if ($normalized === '' || isset($seen[$normalized])) {
+            continue;
+        }
+        $seen[$normalized] = true;
+        $uniqueValues[] = trim($value);
+    }
+
+    return $uniqueValues;
+}
+
+function deduplicateStructuredItems(array $items, string $field): array
+{
+    $uniqueItems = [];
+    $seen = [];
+
+    foreach ($items as $item) {
+        $value = trim((string)($item[$field] ?? ''));
+        $normalized = mb_strtolower($value, 'UTF-8');
+        if ($normalized === '' || isset($seen[$normalized])) {
+            continue;
+        }
+        $seen[$normalized] = true;
+        $uniqueItems[] = $item;
+    }
+
+    return $uniqueItems;
+}
+
+function extractLeadingNumber(string $line): ?int
+{
+    if (preg_match('/^(\d+)[\.\)]/u', $line, $match)) {
+        return (int)$match[1];
+    }
+
+    return null;
 }
 
 function readOdsFile(string $filePath): array {

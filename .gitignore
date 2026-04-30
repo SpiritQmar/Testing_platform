@@ -20,4 +20,5 @@ uploads/
 cache/
 tmp/
 temp/
-documents/*
+!documents/*/README.md
+

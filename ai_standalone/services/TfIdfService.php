@@ -8,27 +8,42 @@ final class TfIdfService
 {
     private PDO $databaseConnection;
     private ?EmbeddingsService $semanticAnalysisService;
+    private ?int $currentImportId;
 
-    public function __construct(PDO $databaseConnection, ?EmbeddingsService $semanticAnalysisService = null)
+    public function __construct(PDO $databaseConnection, ?EmbeddingsService $semanticAnalysisService = null, ?int $importId = null)
     {
         $this->databaseConnection = $databaseConnection;
         $this->semanticAnalysisService = $semanticAnalysisService;
+        $this->currentImportId = $importId;
     }
 
     public function analyzeQuestionSyllabusAlignment(): array
     {
+        if ($this->currentImportId === null) {
+            return [];
+        }
+
         $alignmentResults = [];
-        $queryStatement = $this->databaseConnection->query("
+        $queryStatement = $this->databaseConnection->prepare("
             SELECT hq.question_id, hq.question_text, hq.syllabus_topic_id, hq.max_score,
                    s.title as syllabus_title, s.discipline_name, s.keywords as syllabus_keywords,
-                   AVG(r.received_score) as avg_score, COUNT(DISTINCT r.student_id) as attempts
+                    AVG(r.received_score) as avg_score, COUNT(DISTINCT r.student_id) as attempts
             FROM hier_questions hq
             INNER JOIN ai_syllabus_topics s ON s.syllabus_topic_id = hq.syllabus_topic_id
-            LEFT JOIN raw_exam_results r ON r.question_id = hq.question_id
+            INNER JOIN (
+                SELECT DISTINCT question_id
+                FROM raw_exam_results
+                WHERE import_id = :source_import_id
+            ) source_r ON source_r.question_id = hq.question_id
+            LEFT JOIN raw_exam_results r ON r.question_id = hq.question_id AND r.import_id = :stats_import_id
             WHERE hq.syllabus_topic_id IS NOT NULL
             GROUP BY hq.question_id, s.syllabus_topic_id
             ORDER BY hq.question_id
         ");
+        $queryStatement->execute([
+            ':source_import_id' => $this->currentImportId,
+            ':stats_import_id' => $this->currentImportId,
+        ]);
         $examQuestions = $queryStatement->fetchAll(PDO::FETCH_ASSOC);
 
         foreach ($examQuestions as $questionData) {
@@ -46,12 +61,11 @@ final class TfIdfService
             if ($this->semanticAnalysisService && $this->semanticAnalysisService->isEmbeddingsServiceAvailable()) {
                 $semanticAnalysisResult = $this->semanticAnalysisService->getSimilarity(
                     $questionData['question_text'] ?? '',
-                    $questionData['syllabus_title'] ?? ''
+                    trim(($questionData['syllabus_title'] ?? '') . ' ' . ($questionData['syllabus_keywords'] ?? ''))
                 );
                 if ($semanticAnalysisResult) {
                     $semanticSimilarityScore = $semanticAnalysisResult['similarity'] ?? 0;
                 }
-            } else {
             }
 
             $combinedAlignmentScore = $textSimilarityScore * 0.6 + $semanticSimilarityScore * 0.4;
