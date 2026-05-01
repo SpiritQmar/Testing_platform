@@ -33,10 +33,7 @@ docker-compose up -d
 1. http://localhost/phpmyadmin ашыңыз
 2. `exam_analyzer_2` атымен жаңа деректер қорын құрыңыз
 3. SQL импорттаңыз: `sql/full_database_setup.sql`
-4. Деректер қорына қосылуымды `ai_standalone/config.php` файлында баптаңыз
-5. Бірінші іске қосқанда әдепкі пайдаланушы құрылады:
-   - Логин: `superadmin`
-   - Құпия сөз: `superadmin123`
+
 
 ### Python қызметі
 

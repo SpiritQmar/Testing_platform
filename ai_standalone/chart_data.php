@@ -19,7 +19,7 @@ try {
     }
     
     $ai = new AIAnalyticsService($pdo, $importId);
-    $embeddingsService = new EmbeddingsService('http://localhost:8000', true);
+    $embeddingsService = new EmbeddingsService();
     $tfidf = new TfIdfService($pdo, $embeddingsService, (int)$importId);
     
     $metrics = $ai->getQuestionQualityMetrics();
@@ -47,18 +47,30 @@ try {
         }
     }
     
-    $patterns = $ai->getStudentRiskPatterns(1, 1000);
+    $patterns = $ai->getStudentRiskPatterns(1, 10000);
     $ok = 0;
     $systemic = 0;
     $spot = 0;
+    
+    $logFile = __DIR__ . '/debug_students.log';
+    $logData = "=== " . date('Y-m-d H:i:s') . " ===\n";
+    $logData .= "Import ID: $importId\n";
+    $logData .= "Patterns count: " . count($patterns) . "\n";
+    
     if (!empty($patterns)) {
         foreach ($patterns as $p) {
             $patternType = $p['pattern_type'] ?? '';
+            $logData .= "Pattern: " . $patternType . " - " . json_encode($p) . "\n";
             if ($patternType === 'ok') $ok++;
             elseif ($patternType === 'systemic') $systemic++;
             elseif ($patternType === 'spot') $spot++;
         }
     }
+    
+    $logData .= "Counts - OK: $ok, Systemic: $systemic, Spot: $spot\n";
+    $logData .= "========================\n\n";
+    
+    file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
     
     $validation = $ai->getValidationOverview();
     $val_ok = 0;
@@ -110,53 +122,53 @@ try {
         }
     }
 
-    $data = [
-        'quality' => [
+    $chartData = [
+        'questionQuality' => [
             'labels' => ['Сложный', 'Легкий', 'Норма'],
             'data' => [$hard, $easy, $normal],
-            'colors' => ['#dc2626', '#d97706', '#059669'],
-            'backgroundColors' => ['#fee2e2', '#fef3c7', '#d1fae5']
+            'colors' => ['#ef4444', '#f59e0b', '#10b981'],
+            'backgroundColors' => ['#fecaca', '#fed7aa', '#a7f3d0']
         ],
         'correlation' => [
             'labels' => ['Слабая корреляция', 'Хорошая корреляция'],
             'data' => [$weak, $strong],
-            'colors' => ['#dc2626', '#059669'],
-            'backgroundColors' => ['#fee2e2', '#d1fae5']
+            'colors' => ['#ef4444', '#10b981'],
+            'backgroundColors' => ['#fecaca', '#a7f3d0']
         ],
-        'students' => [
-            'labels' => ['OK', 'Системные проблемы', 'Локальные провалы'],
+        'studentRisk' => [
+            'labels' => ['Норма', 'Системные проблемы', 'Локальные провалы'],
             'data' => [$ok, $systemic, $spot],
-            'colors' => ['#059669', '#dc2626', '#d97706'],
-            'backgroundColors' => ['#d1fae5', '#fee2e2', '#fef3c7']
+            'colors' => ['#10b981', '#ef4444', '#f59e0b'],
+            'backgroundColors' => ['#a7f3d0', '#fecaca', '#fed7aa']
         ],
         'validation' => [
-            'labels' => ['OK', 'Warning'],
+            'labels' => ['Корректно', 'Предупреждение'],
             'data' => [$val_ok, $warning],
-            'colors' => ['#059669', '#d97706'],
-            'backgroundColors' => ['#d1fae5', '#fef3c7']
+            'colors' => ['#10b981', '#f59e0b'],
+            'backgroundColors' => ['#a7f3d0', '#fed7aa']
         ],
         'semantic' => [
             'labels' => ['Высокое сходство', 'Среднее сходство', 'Низкое сходство'],
             'data' => [$high, $medium, $low],
-            'colors' => ['#059669', '#d97706', '#dc2626'],
-            'backgroundColors' => ['#d1fae5', '#fef3c7', '#fee2e2']
+            'colors' => ['#10b981', '#f59e0b', '#ef4444'],
+            'backgroundColors' => ['#a7f3d0', '#fed7aa', '#fecaca']
         ],
         'criteria' => [
             'labels' => ['Отлично', 'Хорошо', 'Удовлетворительно', 'Плохо'],
             'data' => [$excellent, $good, $satisfactory, $poor],
-            'colors' => ['#059669', '#0ea5e9', '#d97706', '#dc2626'],
-            'backgroundColors' => ['#d1fae5', '#e0f2fe', '#fef3c7', '#fee2e2']
+            'colors' => ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'],
+            'backgroundColors' => ['#a7f3d0', '#dbeafe', '#fed7aa', '#fecaca']
         ],
-        'answers' => [
+        'plagiarism' => [
             'labels' => ['Низкий плагиат', 'Высокий плагиат'],
             'data' => [$plagiarismLow, $plagiarismHigh],
-            'colors' => ['#059669', '#dc2626'],
-            'backgroundColors' => ['#d1fae5', '#fee2e2']
+            'colors' => ['#10b981', '#ef4444'],
+            'backgroundColors' => ['#a7f3d0', '#fecaca']
         ]
     ];
     
     ob_end_clean();
-    echo json_encode($data);
+    echo json_encode($chartData);
 } catch (Throwable $e) {
     ob_end_clean();
     echo json_encode(['error' => $e->getMessage()]);

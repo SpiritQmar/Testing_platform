@@ -1,4 +1,13 @@
 <?php
+
+require_once __DIR__ . '/includes/env_loader.php';
+
+$envFilePath = __DIR__ . '/../.env';
+if (!file_exists($envFilePath)) {
+    $envFilePath = __DIR__ . '/.env';
+}
+loadEnvironmentVariables($envFilePath);
+
 $config = [];
 $configPath = __DIR__ . '/config.php';
 $configExamplePath = __DIR__ . '/config.example.php';
@@ -35,5 +44,7 @@ try {
     ]);
 } catch (PDOException $e) {
     $db_error = $e->getMessage();
-
+    error_log("Database connection failed: " . $e->getMessage());
+    die("Database connection error. Check logs or .env configuration. Error: " . htmlspecialchars($e->getMessage()));
 }
+

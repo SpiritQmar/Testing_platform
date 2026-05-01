@@ -2,8 +2,6 @@
 
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../db.php';
-require_login();
-require_role(['superadmin', 'admin', 'teacher']);
 
 $criteria = [];
 try {
@@ -28,7 +26,7 @@ $lang = get_lang();
 <head>
   <meta charset="utf-8">
   <title>View Evaluation Criteria</title>
-  <link href="../assets/vendor/css/bootstrap-lite.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="../assets/app.css" rel="stylesheet">
   <style>body{background:#f5f5f5}.container{max-width:1200px;margin:0 auto;padding:20px}</style>
 </head>
@@ -95,6 +93,6 @@ $lang = get_lang();
     <a href="../index.php" class="btn btn-outline-secondary">Back to Analytics</a>
   </div>
 </div>
-<script src="../assets/vendor/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

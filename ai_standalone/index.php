@@ -40,7 +40,6 @@ require_once __DIR__ . '/services/TfIdfService.php';
 require_once __DIR__ . '/services/RuleClassifierService.php';
 require_once __DIR__ . '/api/router.php';
 
-require_role(['superadmin', 'admin', 'teacher']);
 $config = require __DIR__ . '/config.php';
 
 
@@ -101,12 +100,15 @@ $minStudentsDiscrimination = $_SESSION['min_students_discrimination'] ?? 10;
 
 $ai = new AIAnalyticsService($pdo, $importId);
 $ai->setMinStudentsForDiscrimination($minStudentsDiscrimination);
-$embeddingsService = new EmbeddingsService('http://localhost:8000', true);
+$embeddingsService = new EmbeddingsService();
 $tfidf = new TfIdfService($pdo, $embeddingsService, $importId);
 $rules = new RuleClassifierService($pdo);
 $router = new AnalyticsServiceRouter ($pdo);
 $questionImportFlash = $_SESSION['question_text_import_flash'] ?? null;
 unset($_SESSION['question_text_import_flash']);
+
+$importFlash = $_SESSION['import_flash'] ?? null;
+unset($_SESSION['import_flash']);
 
 function renderPagination($section, $pageParam, $currentPage, $totalPages, $sortColumn = '', $sortDirection = '', $totalItems = 0) {
     if ($totalPages <= 1) return '';
@@ -349,7 +351,50 @@ document.addEventListener('DOMContentLoaded', function() {
 
   setupDragAndDrop();
   setupSelectAll();
+  setupImportFormLogging();
 });
+
+function setupImportFormLogging() {
+  const forms = [
+    { id: 'criteriaForm', name: 'Criteria', fileInput: 'criteriaFileInput' },
+    { id: 'detailsForm', name: 'Details', fileInput: 'detailsFileInput' },
+    { id: 'answersForm', name: 'Answers', fileInput: 'answersFileInput' }
+  ];
+
+  forms.forEach(formConfig => {
+    const form = document.getElementById(formConfig.id);
+    if (form) {
+      form.addEventListener('submit', function(e) {
+        const importId = form.querySelector('input[name="import_id"]');
+        const fileInput = document.getElementById(formConfig.fileInput);
+        const csrfToken = form.querySelector('input[name="csrf_token"]');
+        
+        const logMessage = 
+          '=== IMPORT FORM SUBMISSION ===\n' +
+          'Form: ' + formConfig.name + '\n' +
+          'Action: ' + form.action + '\n' +
+          'Method: ' + form.method + '\n' +
+          'Import ID: ' + (importId ? importId.value : 'NOT FOUND') + '\n' +
+          'File selected: ' + (fileInput && fileInput.files.length > 0 ? fileInput.files[0].name : 'NO FILE') + '\n' +
+          'File size: ' + (fileInput && fileInput.files.length > 0 ? fileInput.files[0].size + ' bytes' : 'N/A') + '\n' +
+          'CSRF Token: ' + (csrfToken ? (csrfToken.value ? 'PRESENT' : 'MISSING') : 'NOT FOUND') + '\n' +
+          '=== END FORM SUBMISSION ===';
+        
+        console.log(logMessage);
+        
+        if (fileInput && fileInput.files.length === 0) {
+          console.error('ERROR: No file selected!');
+          e.preventDefault();
+          alert('Пожалуйста, выберите файл для импорта');
+          return;
+        }
+        
+      });
+    } else {
+      console.warn('Form not found:', formConfig.id);
+    }
+  });
+}
 
 function refreshSyllabusTopics() {
   fetch('?section=import&refresh_topics=1', {
@@ -382,26 +427,29 @@ function refreshSyllabusTopics() {
 <style>
 .ai-container { max-width: 1400px; margin: 0 auto; padding: 0 20px; }
 .ai-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; border-radius: 12px; margin-bottom: 40px; }
-.ai-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
-.ai-header p { font-size: 16px; opacity: 0.9; }
+.ai-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; color: white; }
+.ai-header p { font-size: 16px; opacity: 0.9; color: white; }
 .ai-nav { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 40px; justify-content: center; }
-.ai-nav-btn { flex: 1; min-width: 100px; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 8px; background: #f1f5f9; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); font-weight: 500; font-size: 13px; text-decoration: none; color: #1a1d21; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.3; }
-.ai-nav-btn:hover { background: #e2e8f0; transform: translateY(-2px); border-color: #cbd5e1; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-decoration: none; color: #1a1d21; }
+.ai-nav-btn { flex: 1; min-width: 100px; padding: 12px 16px; border: 2px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); font-weight: 500; font-size: 13px; text-decoration: none; color: var(--text-primary); display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.3; }
+.ai-nav-btn:hover { background: var(--bg-tertiary); transform: translateY(-2px); border-color: var(--accent-primary); box-shadow: var(--shadow-md); text-decoration: none; color: var(--text-primary); }
 .ai-nav-btn:active { transform: translateY(0); }
-.ai-nav-btn.active { background: #667eea; color: white; border-color: #667eea; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3); text-decoration: none; }
+.ai-nav-btn.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: transparent; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3); text-decoration: none; }
 .ai-section { display: none; }
 .ai-section.active { display: block; }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; margin-bottom: 40px; }
-.stat-card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-.stat-card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,0.15); }
-.stat-value { font-size: 36px; font-weight: 700; color: #1a1d21; }
-.stat-label { color: #64748b; font-size: 15px; margin-top: 8px; font-weight: 500; }
-.table-container { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; margin-bottom: 30px; max-width: 1400px; margin-left: auto; margin-right: auto; overflow-x: auto; }
+.stat-card { background: var(--bg-primary); padding: 24px; border-radius: 12px; box-shadow: var(--shadow-md); border: 1px solid var(--border-color); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.stat-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+.stat-value { font-size: 36px; font-weight: 700; color: var(--text-primary); }
+.stat-label { color: var(--text-muted); font-size: 15px; margin-top: 8px; font-weight: 500; }
+.table-container { background: var(--bg-primary) !important; border-radius: 12px; padding: 24px; box-shadow: var(--shadow-md); border: 1px solid var(--border-color); margin-bottom: 30px; max-width: 1400px; margin-left: auto; margin-right: auto; overflow-x: auto; }
+.table-container table { background: var(--bg-primary) !important; }
+.table-container table thead { background: var(--bg-secondary) !important; }
+.table-container table tbody { background: var(--bg-primary) !important; }
 .badge-soft { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; }
-.badge-soft.success { background: #d1fae5; color: #059669; }
-.badge-soft.warning { background: #fef3c7; color: #d97706; }
-.badge-soft.danger { background: #fee2e2; color: #dc2626; }
-.badge-soft.info { background: #dbeafe; color: #2563eb; }
+.badge-soft.success { background: rgba(16, 185, 129, 0.15); color: var(--accent-success); }
+.badge-soft.warning { background: rgba(245, 158, 11, 0.15); color: var(--accent-warning); }
+.badge-soft.danger { background: rgba(239, 68, 68, 0.15); color: var(--accent-danger); }
+.badge-soft.info { background: rgba(37, 99, 235, 0.15); color: var(--accent-primary); }
 
 .quick-guide-card { animation: fadeInUp 0.6s ease-out; }
 @keyframes fadeInUp {
@@ -440,41 +488,42 @@ function refreshSyllabusTopics() {
   50% { transform: scale(1.1); }
 }
 
-.container-card { border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 15px; }
-.container-card.running { border-color: #10b981; background: #f0fdf4; }
-.container-card.stopped { border-color: #ef4444; background: #fef2f2; }
+.container-card { border: 2px solid var(--border-color); border-radius: 12px; padding: 20px; margin-bottom: 15px; background: var(--bg-primary); }
+.container-card.running { border-color: #10b981; background: rgba(16, 185, 129, 0.1); }
+.container-card.stopped { border-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
-.form-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; }
+.form-card { background: var(--bg-primary); padding: 20px; border-radius: 12px; box-shadow: var(--shadow-md); border: 1px solid var(--border-color); }
 .pagination { display: flex; gap: 8px; margin-top: 24px; justify-content: center; }
-.pagination button { padding: 10px 18px; border: 1px solid #e2e8f0; background: white; cursor: pointer; border-radius: 8px; font-size: 14px; transition: all 0.2s ease; }
-.pagination button:hover { background: #f1f5f9; transform: translateY(-1px); }
+.pagination button { padding: 10px 18px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); cursor: pointer; border-radius: 8px; font-size: 14px; transition: all 0.2s ease; }
+.pagination button:hover { background: var(--bg-secondary); transform: translateY(-1px); }
 .pagination button.active { background: #667eea; color: white; border-color: #667eea; box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3); }
 .pagination button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 table thead th a { color: inherit; text-decoration: none; }
 table thead th a:hover { text-decoration: underline; }
-table { border-collapse: separate; border-spacing: 0; width: auto; max-width: 100%; }
-table thead th { border-bottom: 2px solid #e2e8f0; border-right: 1px solid #e2e8f0; padding: 18px 14px; font-weight: 600; font-size: 16px !important; color: #1a1d21; background: #f8fafc; cursor: pointer; transition: background 0.2s; }
-table thead th:hover { background: #f1f5f9; }
+table { border-collapse: separate; border-spacing: 0; width: auto; max-width: 100%; background: var(--bg-primary) !important; }
+table thead th { border-bottom: 2px solid var(--border-color); border-right: 1px solid var(--border-color); padding: 18px 14px; font-weight: 600; font-size: 16px !important; color: var(--text-primary); background: var(--bg-secondary) !important; cursor: pointer; transition: background 0.2s; }
+table thead th:hover { background: var(--bg-tertiary) !important; }
 table thead th:last-child { border-right: none; }
-table thead th a { font-size: 16px !important; color: #1a1d21; cursor: pointer; transition: color 0.2s; }
+table thead th a { font-size: 16px !important; color: var(--text-primary); cursor: pointer; transition: color 0.2s; }
 table thead th a:hover { color: #667eea; }
-table tbody td { border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; padding: 16px 14px; font-size: 16px; color: #334155; }
+table tbody td { border-bottom: 1px solid var(--border-color); border-right: 1px solid var(--border-color); padding: 16px 14px; font-size: 16px; color: var(--text-secondary); background: var(--bg-primary) !important; }
 table tbody td:last-child { border-right: none; }
-table tbody tr:hover { background: #f1f5f9; }
+table tbody tr { background: var(--bg-primary) !important; }
+table tbody tr:hover { background: var(--bg-secondary) !important; }
 table tbody tr:last-child td { border-bottom: none; }
 .sort-icon { font-size: 18px; margin-left: 6px; opacity: 0.6; }
 .sort-icon.active { opacity: 1; color: #667eea; }
-.nav-tabs { border-bottom: 2px solid #e2e8f0; }
-.nav-tabs .nav-link { border: 2px solid transparent; border-bottom: none; padding: 12px 20px; color: #64748b; font-weight: 500; font-size: 14px; }
-.nav-tabs .nav-link:hover { border-color: #e2e8f0; color: #1a1d21; }
-.nav-tabs .nav-link.active { border-color: #e2e8f0 #e2e8f0 #fff; color: #667eea; border-bottom: 2px solid #fff; margin-bottom: -2px; }
+.nav-tabs { border-bottom: 2px solid var(--border-color); }
+.nav-tabs .nav-link { border: 2px solid transparent; border-bottom: none; padding: 12px 20px; color: var(--text-muted); background: var(--bg-secondary); font-weight: 500; font-size: 14px; transition: all 0.2s ease; }
+.nav-tabs .nav-link:hover { border-color: var(--border-color); color: var(--text-primary); background: var(--bg-tertiary); }
+.nav-tabs .nav-link.active { border-color: var(--border-color) var(--border-color) var(--bg-primary); color: #667eea; background: var(--bg-primary); border-bottom: 2px solid var(--bg-primary); margin-bottom: -2px; }
 .tab-pane { padding: 20px 0; }
-.form-control { border: 2px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 14px; transition: all 0.2s ease; }
+.form-control { border: 2px solid var(--border-color); border-radius: 8px; padding: 12px; font-size: 14px; transition: all 0.2s ease; background: var(--input-bg); color: var(--text-primary); }
 .form-control:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); outline: none; }
-.form-control:hover { border-color: #cbd5e1; }
-.form-select { border: 2px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 14px; transition: all 0.2s ease; }
+.form-control:hover { border-color: var(--border-color); }
+.form-select { border: 2px solid var(--border-color); border-radius: 8px; padding: 12px; font-size: 14px; transition: all 0.2s ease; background: var(--input-bg); color: var(--text-primary); }
 .form-select:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); outline: none; }
-.form-select:hover { border-color: #cbd5e1; }
+.form-select:hover { border-color: var(--border-color); }
 .btn { padding: 10px 20px; border-radius: 8px; font-weight: 500; font-size: 14px; border: none; transition: all 0.2s ease; cursor: pointer; }
 .btn:hover { transform: translateY(-1px); }
 .btn:active { transform: translateY(0); }
@@ -484,16 +533,29 @@ table tbody tr:last-child td { border-bottom: none; }
 .btn-danger:hover { background: #dc2626; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3); }
 .btn-warning { background: #f59e0b; color: white; }
 .btn-warning:hover { background: #d97706; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.3); }
-.alert { border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; font-size: 14px; }
-.alert-success { background: #f0fdf4; border-color: #10b981; color: #059669; }
-.alert-danger { background: #fef2f2; border-color: #ef4444; color: #dc2626; }
-.alert-warning { background: #fffbeb; border-color: #f59e0b; color: #d97706; }
+.btn-outline-primary { background: transparent; border: 2px solid var(--border-color); color: var(--text-primary); }
+.btn-outline-primary:hover { background: var(--bg-secondary); border-color: #667eea; color: #667eea; }
+.alert { border-radius: 12px; padding: 16px; border: 1px solid var(--border-color); font-size: 14px; }
+.alert-success { background: rgba(16, 185, 129, 0.1); border-color: #10b981; color: #059669; }
+.alert-danger { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #dc2626; }
+.alert-warning { background: rgba(245, 158, 11, 0.1); border-color: #f59e0b; color: #d97706; }
 </style>
 
 <div class="ai-container">
   <div class="ai-header">
-    <h1 class="h2 mb-2"><?= t('title') ?></h1>
-    <p class="mb-0 opacity-75"><?= t('subtitle') ?></p>
+    <div class="ai-header-content">
+      <div>
+        <h1 class="h2 mb-2"><?= t('title') ?></h1>
+        <p class="mb-0 opacity-75"><?= t('subtitle') ?></p>
+      </div>
+      <div class="ai-header-lang">
+        <div class="btn-group" role="group">
+          <a href="?lang=kz" class="btn btn-sm <?= $currentLang === 'kz' ? 'btn-primary' : 'btn-outline-primary' ?>">Қазақша</a>
+          <a href="?lang=ru" class="btn btn-sm <?= $currentLang === 'ru' ? 'btn-primary' : 'btn-outline-primary' ?>">Русский</a>
+          <a href="?lang=en" class="btn btn-sm <?= $currentLang === 'en' ? 'btn-primary' : 'btn-outline-primary' ?>">English</a>
+        </div>
+      </div>
+    </div>
   </div>
   
   <?php if ($importId === null && !empty($imports)): ?>
@@ -528,6 +590,8 @@ table tbody tr:last-child td { border-bottom: none; }
     <div class="stats-grid">
       <?php
       $stats = ['questions' => 0, 'students' => 0, 'attempts' => 0, 'avg_score' => 0];
+      $previousStats = ['questions' => 0, 'students' => 0, 'attempts' => 0, 'avg_score' => 0];
+      
       if ($importId) {
           try {
               $stmt = $pdo->prepare("
@@ -541,26 +605,85 @@ table tbody tr:last-child td { border-bottom: none; }
               ");
               $stmt->execute([$importId]);
               $stats = $stmt->fetch(PDO::FETCH_ASSOC);
+              
+              $stmt = $pdo->prepare("
+                  SELECT 
+                      COUNT(DISTINCT question_id) as questions,
+                      COUNT(DISTINCT student_id) as students,
+                      COUNT(*) as attempts,
+                      AVG(score_after_appeal) as avg_score
+                  FROM raw_exam_results 
+                  WHERE import_id != ? AND import_id IN (
+                      SELECT id FROM imports WHERE created_at < (
+                          SELECT created_at FROM imports WHERE id = ?
+                      ) ORDER BY created_at DESC LIMIT 1
+                  )
+              ");
+              $stmt->execute([$importId, $importId]);
+              $previousStats = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['questions' => 0, 'students' => 0, 'attempts' => 0, 'avg_score' => 0];
+              
           } catch (Throwable $e) {
-    error_log("Error: " . $e->getMessage());
-}
+              error_log("Error: " . $e->getMessage());
+          }
       }
+      
+      function calculateChange($current, $previous) {
+          if ($previous == 0) return ['change' => 0, 'isPositive' => true];
+          $change = (($current - $previous) / $previous) * 100;
+          return [
+              'change' => abs(round($change)),
+              'isPositive' => $change >= 0
+          ];
+      }
+      
+      $questionsChange = calculateChange($stats['questions'], $previousStats['questions']);
+      $studentsChange = calculateChange($stats['students'], $previousStats['students']);
+      $attemptsChange = calculateChange($stats['attempts'], $previousStats['attempts']);
+      $scoreChange = calculateChange($stats['avg_score'], $previousStats['avg_score']);
       ?>
-      <div class="stat-card">
-        <div class="stat-value"><?= number_format($stats['questions'] ?: 0) ?></div>
-        <div class="stat-label"><?= t('questions') ?></div>
+      <div class="metric-card">
+        <div class="metric-icon blue">
+          <i class="bi bi-question-circle"></i>
+        </div>
+        <div class="metric-value"><?= number_format($stats['questions'] ?: 0) ?></div>
+        <div class="metric-label"><?= t('questions') ?></div>
+        <div class="metric-change <?= $questionsChange['isPositive'] ? 'positive' : 'negative' ?>">
+          <i class="bi bi-arrow-<?= $questionsChange['isPositive'] ? 'up' : 'down' ?>"></i>
+          <span><?= $questionsChange['isPositive'] ? '+' : '-' ?><?= $questionsChange['change'] ?>%</span>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value"><?= number_format($stats['students'] ?: 0) ?></div>
-        <div class="stat-label"><?= t('students') ?></div>
+      <div class="metric-card">
+        <div class="metric-icon purple">
+          <i class="bi bi-graph-up"></i>
+        </div>
+        <div class="metric-value"><?= number_format($stats['students'] ?: 0) ?></div>
+        <div class="metric-label"><?= t('students') ?></div>
+        <div class="metric-change <?= $studentsChange['isPositive'] ? 'positive' : 'negative' ?>">
+          <i class="bi bi-arrow-<?= $studentsChange['isPositive'] ? 'up' : 'down' ?>"></i>
+          <span><?= $studentsChange['isPositive'] ? '+' : '-' ?><?= $studentsChange['change'] ?>%</span>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value"><?= number_format($stats['attempts'] ?: 0) ?></div>
-        <div class="stat-label"><?= t('attempts') ?></div>
+      <div class="metric-card">
+        <div class="metric-icon green">
+          <i class="bi bi-check-circle"></i>
+        </div>
+        <div class="metric-value"><?= number_format($stats['attempts'] ?: 0) ?></div>
+        <div class="metric-label"><?= t('attempts') ?></div>
+        <div class="metric-change <?= $attemptsChange['isPositive'] ? 'positive' : 'negative' ?>">
+          <i class="bi bi-arrow-<?= $attemptsChange['isPositive'] ? 'up' : 'down' ?>"></i>
+          <span><?= $attemptsChange['isPositive'] ? '+' : '-' ?><?= $attemptsChange['change'] ?>%</span>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value"><?= number_format($stats['avg_score'] ?: 0, 1) ?></div>
-        <div class="stat-label"><?= t('avg_score') ?></div>
+      <div class="metric-card">
+        <div class="metric-icon red">
+          <i class="bi bi-exclamation-triangle"></i>
+        </div>
+        <div class="metric-value"><?= number_format($stats['avg_score'] ?: 0, 1) ?></div>
+        <div class="metric-label"><?= t('avg_score') ?></div>
+        <div class="metric-change <?= $scoreChange['isPositive'] ? 'positive' : 'negative' ?>">
+          <i class="bi bi-arrow-<?= $scoreChange['isPositive'] ? 'up' : 'down' ?>"></i>
+          <span><?= $scoreChange['isPositive'] ? '+' : '-' ?><?= $scoreChange['change'] ?>%</span>
+        </div>
       </div>
     </div>
     
@@ -573,43 +696,43 @@ table tbody tr:last-child td { border-bottom: none; }
               <div class="quick-guide-item">
                 <div class="quick-guide-icon" style="background: #667eea;"><i class="bi bi-file-earmark"></i></div>
                 <div>
-                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_syllabus_import') ?></div>
-                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_syllabus_import_desc') ?></div>
+                  <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;"><?= t('guide_syllabus_import') ?></div>
+                  <div style="font-size: 12px; line-height: 1.4;"><?= t('guide_syllabus_import_desc') ?></div>
                 </div>
               </div>
               <div class="quick-guide-item">
                 <div class="quick-guide-icon" style="background: #10b981;"><i class="bi bi-bar-chart"></i></div>
                 <div>
-                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_exam_import') ?></div>
-                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_exam_import_desc') ?></div>
+                  <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;"><?= t('guide_exam_import') ?></div>
+                  <div style="font-size: 12px; line-height: 1.4;"><?= t('guide_exam_import_desc') ?></div>
                 </div>
               </div>
               <div class="quick-guide-item">
                 <div class="quick-guide-icon" style="background: #f59e0b;"><i class="bi bi-shuffle"></i></div>
                 <div>
-                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_sorting') ?></div>
-                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_sorting_desc') ?></div>
+                  <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;"><?= t('guide_sorting') ?></div>
+                  <div style="font-size: 12px; line-height: 1.4;"><?= t('guide_sorting_desc') ?></div>
                 </div>
               </div>
               <div class="quick-guide-item">
                 <div class="quick-guide-icon" style="background: #ef4444;"><i class="bi bi-graph-up"></i></div>
                 <div>
-                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_quality') ?></div>
-                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_quality_desc') ?></div>
+                  <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;"><?= t('guide_quality') ?></div>
+                  <div style="font-size: 12px; line-height: 1.4;"><?= t('guide_quality_desc') ?></div>
                 </div>
               </div>
               <div class="quick-guide-item">
                 <div class="quick-guide-icon" style="background: #8b5cf6;"><i class="bi bi-link"></i></div>
                 <div>
-                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_correlation') ?></div>
-                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_correlation_desc') ?></div>
+                  <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;"><?= t('guide_correlation') ?></div>
+                  <div style="font-size: 12px; line-height: 1.4;"><?= t('guide_correlation_desc') ?></div>
                 </div>
               </div>
               <div class="quick-guide-item">
                 <div class="quick-guide-icon" style="background: #06b6d4;"><i class="bi bi-people"></i></div>
                 <div>
-                  <div style="font-weight: 600; color: #1a1d21; font-size: 13px; margin-bottom: 4px;"><?= t('guide_students') ?></div>
-                  <div style="color: #64748b; font-size: 12px; line-height: 1.4;"><?= t('guide_students_desc') ?></div>
+                  <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;"><?= t('guide_students') ?></div>
+                  <div style="font-size: 12px; line-height: 1.4;"><?= t('guide_students_desc') ?></div>
                 </div>
               </div>
             </div>
@@ -634,42 +757,49 @@ table tbody tr:last-child td { border-bottom: none; }
             </div>
             <div id="chart-quality" style="display: block;">
               <h4 class="chart-title"><?= t('chart_quality_distribution') ?></h4>
+              <div class="chart-subtitle"><?= t('chart_quality_distribution_desc') ?? 'Question complexity breakdown by difficulty levels' ?></div>
               <div class="chart-container">
                 <canvas id="qualityChart"></canvas>
               </div>
             </div>
-            <div id="chart-correlation" style="display: block;">
+            <div id="chart-correlation" style="display: none;">
               <h4 class="chart-title"><?= t('chart_correlation_distribution') ?></h4>
+              <div class="chart-subtitle"><?= t('chart_correlation_distribution_desc') ?? 'Correlation analysis between question metrics' ?></div>
               <div class="chart-container">
                 <canvas id="correlationChart"></canvas>
               </div>
             </div>
-            <div id="chart-students" style="display: block;">
+            <div id="chart-students" style="display: none;">
               <h4 class="chart-title"><?= t('chart_student_risk_patterns') ?></h4>
+              <div class="chart-subtitle"><?= t('chart_student_risk_patterns_desc') ?? 'Student performance patterns and risk identification' ?></div>
               <div class="chart-container">
                 <canvas id="studentsChart"></canvas>
               </div>
             </div>
-            <div id="chart-validation" style="display: block;">
+            <div id="chart-validation" style="display: none;">
               <h4 class="chart-title"><?= t('chart_validation_status') ?></h4>
+              <div class="chart-subtitle"><?= t('chart_validation_status_desc') ?? 'Question validation results and status overview' ?></div>
               <div class="chart-container">
                 <canvas id="validationChart"></canvas>
               </div>
             </div>
-            <div id="chart-semantic" style="display: block;">
+            <div id="chart-semantic" style="display: none;">
               <h4 class="chart-title"><?= t('chart_semantic_analysis') ?></h4>
+              <div class="chart-subtitle"><?= t('chart_semantic_analysis_desc') ?? 'Semantic analysis using embeddings and vector representations' ?></div>
               <div class="chart-container">
                 <canvas id="semanticChart"></canvas>
               </div>
             </div>
-            <div id="chart-criteria" style="display: block;">
+            <div id="chart-criteria" style="display: none;">
               <h4 class="chart-title"><?= t('criteria_analysis') ?></h4>
+              <div class="chart-subtitle"><?= t('criteria_analysis_desc') ?? 'Evaluation criteria analysis and distribution' ?></div>
               <div class="chart-container">
                 <canvas id="criteriaChart"></canvas>
               </div>
             </div>
-            <div id="chart-answers" style="display: block;">
+            <div id="chart-answers" style="display: none;">
               <h4 class="chart-title"><?= t('student_answers') ?></h4>
+              <div class="chart-subtitle"><?= t('student_answers_desc') ?? 'Student answer patterns and response analysis' ?></div>
               <div class="chart-container">
                 <canvas id="answersChart"></canvas>
               </div>
@@ -763,7 +893,7 @@ table tbody tr:last-child td { border-bottom: none; }
                         ':disc' => $disciplineName,
                         ':course' => $courseNumber,
                         ':fname' => $file['name'],
-                        ':uid' => current_user()['user_id']
+                        ':uid' => 1
                     ]);
                     
                     if ($checkStmt->fetch()) {
@@ -781,7 +911,7 @@ table tbody tr:last-child td { border-bottom: none; }
                         ':fpath' => 'uploads/syllabuses/' . $fileName,
                         ':ftype' => $extension,
                         ':text' => $text,
-                        ':uid' => current_user()['user_id']
+                        ':uid' => 1
                     ]);
                     $syllabusId = (int)$pdo->lastInsertId();
                     
@@ -1320,6 +1450,9 @@ table tbody tr:last-child td { border-bottom: none; }
     <?php if ($questionImportFlash): ?>
       <div class="alert alert-<?= h($questionImportFlash['type'] ?? 'info') ?>"><?= h($questionImportFlash['message'] ?? '') ?></div>
     <?php endif; ?>
+    <?php if ($importFlash): ?>
+      <div class="alert alert-<?= h($importFlash['type'] ?? 'info') ?>"><?= h($importFlash['message'] ?? '') ?></div>
+    <?php endif; ?>
     
     <div class="import-tabs">
       <button onclick="showImportTab('syllabus')" id="import-btn-syllabus" class="chart-button active"><?= t('syllabus_import') ?></button>
@@ -1651,8 +1784,9 @@ table tbody tr:last-child td { border-bottom: none; }
     </div>
     
     <div id="import-criteria" style="display: none;">
-        <form method="post" enctype="multipart/form-data" action="imports/import_evaluation_criteria.php">
+        <form id="criteriaForm" method="post" enctype="multipart/form-data" action="imports/import_evaluation_criteria.php">
           <?= csrf_input() ?>
+          <input type="hidden" name="import_id" value="<?= $importId ?? 1 ?>">
           <div class="import-upload-box" onclick="document.getElementById('criteriaFileInput').click()">
             <div class="import-upload-icon">
               <i class="bi bi-file-earmark-text"></i>
@@ -1667,8 +1801,9 @@ table tbody tr:last-child td { border-bottom: none; }
     </div>
     
     <div id="import-details" style="display: none;">
-        <form method="post" enctype="multipart/form-data" action="imports/import_evaluation_details.php">
+        <form id="detailsForm" method="post" enctype="multipart/form-data" action="imports/import_evaluation_details.php">
           <?= csrf_input() ?>
+          <input type="hidden" name="import_id" value="<?= $importId ?? 1 ?>">
           <div class="import-upload-box" onclick="document.getElementById('detailsFileInput').click()">
             <div class="import-upload-icon">
               <i class="bi bi-file-earmark-bar-graph"></i>
@@ -1683,8 +1818,9 @@ table tbody tr:last-child td { border-bottom: none; }
     </div>
     
     <div id="import-answers" style="display: none;">
-        <form method="post" enctype="multipart/form-data" action="imports/import_student_answers.php">
+        <form id="answersForm" method="post" enctype="multipart/form-data" action="imports/import_student_answers.php">
           <?= csrf_input() ?>
+          <input type="hidden" name="import_id" value="<?= $importId ?? 1 ?>">
           <div class="import-upload-box" onclick="document.getElementById('answersFileInput').click()">
             <div class="import-upload-icon">
               <i class="bi bi-file-earmark-person"></i>
@@ -2124,7 +2260,7 @@ table tbody tr:last-child td { border-bottom: none; }
       <p class="text-muted small mb-3"><?= t('correlation_desc') ?></p>
       <?php if ($importId !== null): ?>
         <div class="mb-4">
-            <canvas id="correlationChartTab" style="max-height: 300px;"></canvas>
+            <canvas id="correlationChartTab" style="max-height: 400px; width: 100%;"></canvas>
         </div>
       <?php endif; ?>
       <?php if ($importId !== null): ?>
@@ -2166,12 +2302,12 @@ table tbody tr:last-child td { border-bottom: none; }
         $offset = ($page - 1) * $perPage;
         $pagedData = array_slice($correlationData, $offset, $perPage);
         ?>
-        <div class="table-responsive">
-          <table class="table table-hover">
+        <div class="table-responsive" style="max-width: none; width: 100%;">
+          <table class="table table-hover" style="width: 100%; min-width: 600px;">
             <thead><tr>
-              <th><a href="?section=correlation&correlation_sort=question_id&correlation_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_id') ?> <span class="sort-icon <?= ($sortColumn === 'question_id') ? 'active' : '' ?>"><?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
-              <th><a href="?section=correlation&correlation_sort=r&correlation_dir=<?= ($sortColumn === 'r' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_coefficient') ?> <span class="sort-icon <?= ($sortColumn === 'r') ? 'active' : '' ?>"><?= ($sortColumn === 'r') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
-              <th><a href="?section=correlation&correlation_sort=flag&correlation_dir=<?= ($sortColumn === 'flag' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_flag') ?> <span class="sort-icon <?= ($sortColumn === 'flag') ? 'active' : '' ?>"><?= ($sortColumn === 'flag') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th style="width: 25%;"><a href="?section=correlation&correlation_sort=question_id&correlation_dir=<?= ($sortColumn === 'question_id' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_id') ?> <span class="sort-icon <?= ($sortColumn === 'question_id') ? 'active' : '' ?>"><?= ($sortColumn === 'question_id') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th style="width: 35%;"><a href="?section=correlation&correlation_sort=r&correlation_dir=<?= ($sortColumn === 'r' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_coefficient') ?> <span class="sort-icon <?= ($sortColumn === 'r') ? 'active' : '' ?>"><?= ($sortColumn === 'r') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
+              <th style="width: 30%;"><a href="?section=correlation&correlation_sort=flag&correlation_dir=<?= ($sortColumn === 'flag' && $sortDirection === 'ASC') ? 'DESC' : 'ASC' ?>"><?= t('th_flag') ?> <span class="sort-icon <?= ($sortColumn === 'flag') ? 'active' : '' ?>"><?= ($sortColumn === 'flag') ? ($sortDirection === 'ASC' ? '▲' : '▼') : '⇅' ?></span></a></th>
             </tr></thead>
             <tbody>
               <?php if (empty($pagedData)): echo '<tr><td colspan="3" class="text-muted">' . t('no_data') . '</td></tr>';
@@ -2569,7 +2705,7 @@ table tbody tr:last-child td { border-bottom: none; }
               <?php foreach ($criteriaAnalysis as $item): ?>
                 <tr class="<?= 
                   $item['performance_level'] === 'excellent' ? 'table-success' : 
-                  ($item['performance_level'] === 'good' ? 'table-info' : 
+                  ($item['performance_level'] === 'good' ? 'table-primary' : 
                   ($item['performance_level'] === 'satisfactory' ? 'table-warning' : 'table-danger')) 
                 ?>">
                   <td><?= h($item['criteria_id']) ?></td>
@@ -2583,7 +2719,7 @@ table tbody tr:last-child td { border-bottom: none; }
                   <td>
                     <span class="badge badge-soft <?= 
                       $item['performance_level'] === 'excellent' ? 'success' : 
-                      ($item['performance_level'] === 'good' ? 'info' : 
+                      ($item['performance_level'] === 'good' ? 'primary' : 
                       ($item['performance_level'] === 'satisfactory' ? 'warning' : 'danger')) 
                     ?>">
                       <?= h(ucfirst($item['performance_level'])) ?>
@@ -2739,27 +2875,62 @@ function initializeCharts() {
     };
 
     const qualityCtx = document.getElementById('qualityChart');
-    if (qualityCtx && chartData.quality) {
+    if (qualityCtx && chartData.questionQuality) {
         try {
             new Chart(qualityCtx, {
-                type: 'pie',
+                type: 'doughnut',
                 data: {
-                    labels: chartData.quality.labels,
+                    labels: chartData.questionQuality.labels,
                     datasets: [{
-                        data: chartData.quality.data,
-                        backgroundColor: chartData.quality.backgroundColors,
-                        borderColor: chartData.quality.colors,
-                        borderWidth: 2
+                        data: chartData.questionQuality.data,
+                        backgroundColor: chartData.questionQuality.backgroundColors,
+                        borderColor: chartData.questionQuality.colors,
+                        borderWidth: 2,
+                        hoverOffset: 8
                     }]
                 },
                 options: {
-                    ...commonOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
                     plugins: {
-                        ...commonOptions.plugins,
                         legend: {
-                            ...commonOptions.plugins.legend,
-                            position: 'right'
+                            position: 'right',
+                            labels: {
+                                padding: 20,
+                                font: {
+                                    size: 13,
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#475569',
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
                         }
+                    },
+                    animation: {
+                        animateScale: true,
+                        animateRotate: true,
+                        duration: 800,
+                        easing: 'easeInOutQuart'
                     }
                 }
             });
@@ -2780,10 +2951,79 @@ function initializeCharts() {
                         backgroundColor: chartData.correlation.backgroundColors,
                         borderColor: chartData.correlation.colors,
                         borderWidth: 2,
-                        borderRadius: 6
+                        borderRadius: 12,
+                        borderSkipped: false,
+                        hoverBackgroundColor: chartData.correlation.colors,
                     }]
                 },
-                options: barOptions
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 12, 
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(226, 232, 240, 0.6)',
+                                drawBorder: false,
+                                borderDash: [3, 3]
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 11, 
+                                    family: 'JetBrains Mono',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10,
+                                beginAtZero: true
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Значение: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 800,
+                        easing: 'easeInOutQuart',
+                        delay: (context) => {
+                            let delay = 0;
+                            if (context.type === 'data' && context.mode === 'default') {
+                                delay = context.dataIndex * 100;
+                            }
+                            return delay;
+                        }
+                    }
+                }
             });
         } catch (error) {
             console.error('Error creating correlation chart:', error);
@@ -2791,21 +3031,95 @@ function initializeCharts() {
     }
 
     const studentsCtx = document.getElementById('studentsChart');
-    if (studentsCtx && chartData.students) {
+    if (studentsCtx && chartData.studentRisk) {
         try {
             new Chart(studentsCtx, {
                 type: 'bar',
                 data: {
-                    labels: chartData.students.labels,
+                    labels: chartData.studentRisk.labels,
                     datasets: [{
-                        data: chartData.students.data,
-                        backgroundColor: chartData.students.backgroundColors,
-                        borderColor: chartData.students.colors,
+                        data: chartData.studentRisk.data,
+                        backgroundColor: chartData.studentRisk.backgroundColors,
+                        borderColor: chartData.studentRisk.colors,
                         borderWidth: 2,
-                        borderRadius: 6
+                        borderRadius: 12,
+                        borderSkipped: false,
+                        hoverBackgroundColor: chartData.studentRisk.colors,
                     }]
                 },
-                options: barOptions
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 12, 
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10
+                            }
+                        },
+                        y: {
+                            type: 'logarithmic',
+                            grid: {
+                                color: 'rgba(226, 232, 240, 0.6)',
+                                drawBorder: false,
+                                borderDash: [3, 3]
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 11, 
+                                    family: 'JetBrains Mono',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10,
+                                callback: function(value, index, values) {
+                                    if (value === 1 || value === 10 || value === 100 || value === 1000) {
+                                        return value.toString();
+                                    }
+                                    return null;
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Студенты: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 800,
+                        easing: 'easeInOutQuart',
+                        delay: (context) => {
+                            let delay = 0;
+                            if (context.type === 'data' && context.mode === 'default') {
+                                delay = context.dataIndex * 100;
+                            }
+                            return delay;
+                        }
+                    }
+                }
             });
         } catch (error) {
             console.error('Error creating students chart:', error);
@@ -2816,24 +3130,67 @@ function initializeCharts() {
     if (validationCtx && chartData.validation) {
         try {
             new Chart(validationCtx, {
-                type: 'pie',
+                type: 'doughnut',
                 data: {
                     labels: chartData.validation.labels,
                     datasets: [{
                         data: chartData.validation.data,
-                        backgroundColor: chartData.validation.backgroundColors,
-                        borderColor: chartData.validation.colors,
-                        borderWidth: 2
+                        backgroundColor: [
+                            'rgba(34, 197, 94, 0.8)',
+                            'rgba(239, 68, 68, 0.8)',
+                            'rgba(156, 163, 175, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(34, 197, 94, 1)',
+                            'rgba(239, 68, 68, 1)',
+                            'rgba(156, 163, 175, 1)'
+                        ],
+                        borderWidth: 2,
+                        hoverOffset: 8
                     }]
                 },
                 options: {
-                    ...commonOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
                     plugins: {
-                        ...commonOptions.plugins,
                         legend: {
-                            ...commonOptions.plugins.legend,
-                            position: 'right'
+                            position: 'right',
+                            labels: {
+                                padding: 20,
+                                font: {
+                                    size: 13,
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#475569',
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
                         }
+                    },
+                    animation: {
+                        animateScale: true,
+                        animateRotate: true,
+                        duration: 800,
+                        easing: 'easeInOutQuart'
                     }
                 }
             });
@@ -2854,10 +3211,79 @@ function initializeCharts() {
                         backgroundColor: chartData.semantic.backgroundColors,
                         borderColor: chartData.semantic.colors,
                         borderWidth: 2,
-                        borderRadius: 6
+                        borderRadius: 12,
+                        borderSkipped: false,
+                        hoverBackgroundColor: chartData.semantic.colors,
                     }]
                 },
-                options: barOptions
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 12, 
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(226, 232, 240, 0.6)',
+                                drawBorder: false,
+                                borderDash: [3, 3]
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 11, 
+                                    family: 'JetBrains Mono',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10,
+                                beginAtZero: true
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Сходство: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 800,
+                        easing: 'easeInOutQuart',
+                        delay: (context) => {
+                            let delay = 0;
+                            if (context.type === 'data' && context.mode === 'default') {
+                                delay = context.dataIndex * 100;
+                            }
+                            return delay;
+                        }
+                    }
+                }
             });
         } catch (error) {
             console.error('Error creating semantic chart:', error);
@@ -2868,24 +3294,69 @@ function initializeCharts() {
     if (criteriaCtx && chartData.criteria) {
         try {
             new Chart(criteriaCtx, {
-                type: 'pie',
+                type: 'doughnut',
                 data: {
                     labels: chartData.criteria.labels,
                     datasets: [{
                         data: chartData.criteria.data,
-                        backgroundColor: chartData.criteria.backgroundColors,
-                        borderColor: chartData.criteria.colors,
-                        borderWidth: 2
+                        backgroundColor: [
+                            'rgba(245, 158, 11, 0.8)',
+                            'rgba(59, 130, 246, 0.8)',
+                            'rgba(16, 185, 129, 0.8)',
+                            'rgba(139, 92, 246, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(245, 158, 11, 1)',
+                            'rgba(59, 130, 246, 1)',
+                            'rgba(16, 185, 129, 1)',
+                            'rgba(139, 92, 246, 1)'
+                        ],
+                        borderWidth: 2,
+                        hoverOffset: 8
                     }]
                 },
                 options: {
-                    ...commonOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
                     plugins: {
-                        ...commonOptions.plugins,
                         legend: {
-                            ...commonOptions.plugins.legend,
-                            position: 'right'
+                            position: 'right',
+                            labels: {
+                                padding: 20,
+                                font: {
+                                    size: 13,
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#475569',
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
                         }
+                    },
+                    animation: {
+                        animateScale: true,
+                        animateRotate: true,
+                        duration: 800,
+                        easing: 'easeInOutQuart'
                     }
                 }
             });
@@ -2895,26 +3366,87 @@ function initializeCharts() {
     }
 
     const answersCtx = document.getElementById('answersChart');
-    if (answersCtx && chartData.answers) {
+    if (answersCtx && chartData.plagiarism) {
         try {
             new Chart(answersCtx, {
-                type: 'pie',
+                type: 'bar',
                 data: {
-                    labels: chartData.answers.labels,
+                    labels: chartData.plagiarism.labels,
                     datasets: [{
-                        data: chartData.answers.data,
-                        backgroundColor: chartData.answers.backgroundColors,
-                        borderColor: chartData.answers.colors,
-                        borderWidth: 2
+                        data: chartData.plagiarism.data,
+                        backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                        borderColor: 'rgba(34, 197, 94, 1)',
+                        borderWidth: 2,
+                        borderRadius: 12,
+                        borderSkipped: false,
+                        hoverBackgroundColor: 'rgba(34, 197, 94, 1)',
                     }]
                 },
                 options: {
-                    ...commonOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 12, 
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(226, 232, 240, 0.6)',
+                                drawBorder: false,
+                                borderDash: [3, 3]
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 11, 
+                                    family: 'JetBrains Mono',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10,
+                                beginAtZero: true
+                            },
+                            beginAtZero: true
+                        }
+                    },
                     plugins: {
-                        ...commonOptions.plugins,
                         legend: {
-                            ...commonOptions.plugins.legend,
-                            position: 'right'
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Ответы: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 800,
+                        easing: 'easeInOutQuart',
+                        delay: (context) => {
+                            let delay = 0;
+                            if (context.type === 'data' && context.mode === 'default') {
+                                delay = context.dataIndex * 100;
+                            }
+                            return delay;
                         }
                     }
                 }
@@ -2928,24 +3460,59 @@ function initializeCharts() {
     if (validationCtxTab && chartData.validation) {
         try {
             new Chart(validationCtxTab, {
-                type: 'pie',
+                type: 'doughnut',
                 data: {
                     labels: chartData.validation.labels,
                     datasets: [{
                         data: chartData.validation.data,
                         backgroundColor: chartData.validation.backgroundColors,
                         borderColor: chartData.validation.colors,
-                        borderWidth: 2
+                        borderWidth: 2,
+                        hoverOffset: 8
                     }]
                 },
                 options: {
-                    ...commonOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
                     plugins: {
-                        ...commonOptions.plugins,
                         legend: {
-                            ...commonOptions.plugins.legend,
-                            position: 'right'
+                            position: 'right',
+                            labels: {
+                                padding: 20,
+                                font: {
+                                    size: 13,
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#475569',
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
                         }
+                    },
+                    animation: {
+                        animateScale: true,
+                        animateRotate: true,
+                        duration: 800,
+                        easing: 'easeInOutQuart'
                     }
                 }
             });
@@ -2955,27 +3522,62 @@ function initializeCharts() {
     }
 
     const qualityCtxTab = document.getElementById('qualityChartTab');
-    if (qualityCtxTab && chartData.quality) {
+    if (qualityCtxTab && chartData.questionQuality) {
         try {
             new Chart(qualityCtxTab, {
-                type: 'pie',
+                type: 'doughnut',
                 data: {
-                    labels: chartData.quality.labels,
+                    labels: chartData.questionQuality.labels,
                     datasets: [{
-                        data: chartData.quality.data,
-                        backgroundColor: chartData.quality.backgroundColors,
-                        borderColor: chartData.quality.colors,
-                        borderWidth: 2
+                        data: chartData.questionQuality.data,
+                        backgroundColor: chartData.questionQuality.backgroundColors,
+                        borderColor: chartData.questionQuality.colors,
+                        borderWidth: 2,
+                        hoverOffset: 8
                     }]
                 },
                 options: {
-                    ...commonOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
                     plugins: {
-                        ...commonOptions.plugins,
                         legend: {
-                            ...commonOptions.plugins.legend,
-                            position: 'right'
+                            position: 'right',
+                            labels: {
+                                padding: 20,
+                                font: {
+                                    size: 13,
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#475569',
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
                         }
+                    },
+                    animation: {
+                        animateScale: true,
+                        animateRotate: true,
+                        duration: 800,
+                        easing: 'easeInOutQuart'
                     }
                 }
             });
@@ -2988,23 +3590,84 @@ function initializeCharts() {
     if (correlationCtxTab && chartData.correlation) {
         try {
             new Chart(correlationCtxTab, {
-                type: 'pie',
+                type: 'bar',
                 data: {
                     labels: chartData.correlation.labels,
                     datasets: [{
                         data: chartData.correlation.data,
                         backgroundColor: chartData.correlation.backgroundColors,
                         borderColor: chartData.correlation.colors,
-                        borderWidth: 2
+                        borderWidth: 2,
+                        borderRadius: 12,
+                        borderSkipped: false,
+                        hoverBackgroundColor: chartData.correlation.colors,
                     }]
                 },
                 options: {
-                    ...commonOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 12, 
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(226, 232, 240, 0.6)',
+                                drawBorder: false,
+                                borderDash: [3, 3]
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 11, 
+                                    family: 'JetBrains Mono',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10,
+                                beginAtZero: true
+                            },
+                            beginAtZero: true
+                        }
+                    },
                     plugins: {
-                        ...commonOptions.plugins,
                         legend: {
-                            ...commonOptions.plugins.legend,
-                            position: 'right'
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Корреляция: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 800,
+                        easing: 'easeInOutQuart',
+                        delay: (context) => {
+                            let delay = 0;
+                            if (context.type === 'data' && context.mode === 'default') {
+                                delay = context.dataIndex * 100;
+                            }
+                            return delay;
                         }
                     }
                 }
@@ -3015,26 +3678,92 @@ function initializeCharts() {
     }
 
     const studentsCtxTab = document.getElementById('studentsChartTab');
-    if (studentsCtxTab && chartData.students) {
+    if (studentsCtxTab && chartData.studentRisk) {
         try {
             new Chart(studentsCtxTab, {
-                type: 'pie',
+                type: 'bar',
                 data: {
-                    labels: chartData.students.labels,
+                    labels: chartData.studentRisk.labels,
                     datasets: [{
-                        data: chartData.students.data,
-                        backgroundColor: chartData.students.backgroundColors,
-                        borderColor: chartData.students.colors,
-                        borderWidth: 2
+                        data: chartData.studentRisk.data,
+                        backgroundColor: chartData.studentRisk.backgroundColors,
+                        borderColor: chartData.studentRisk.colors,
+                        borderWidth: 2,
+                        borderRadius: 12,
+                        borderSkipped: false,
+                        hoverBackgroundColor: chartData.studentRisk.colors,
                     }]
                 },
                 options: {
-                    ...commonOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 12, 
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10
+                            }
+                        },
+                        y: {
+                            type: 'logarithmic',
+                            grid: {
+                                color: 'rgba(226, 232, 240, 0.6)',
+                                drawBorder: false,
+                                borderDash: [3, 3]
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 11, 
+                                    family: 'JetBrains Mono',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10,
+                                callback: function(value, index, values) {
+                                    if (value === 1 || value === 10 || value === 100 || value === 1000) {
+                                        return value.toString();
+                                    }
+                                    return null;
+                                }
+                            }
+                        }
+                    },
                     plugins: {
-                        ...commonOptions.plugins,
                         legend: {
-                            ...commonOptions.plugins.legend,
-                            position: 'right'
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Студенты: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 800,
+                        easing: 'easeInOutQuart',
+                        delay: (context) => {
+                            let delay = 0;
+                            if (context.type === 'data' && context.mode === 'default') {
+                                delay = context.dataIndex * 100;
+                            }
+                            return delay;
                         }
                     }
                 }
@@ -3056,10 +3785,79 @@ function initializeCharts() {
                         backgroundColor: chartData.semantic.backgroundColors,
                         borderColor: chartData.semantic.colors,
                         borderWidth: 2,
-                        borderRadius: 6
+                        borderRadius: 12,
+                        borderSkipped: false,
+                        hoverBackgroundColor: chartData.semantic.colors,
                     }]
                 },
-                options: barOptions
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 12, 
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(226, 232, 240, 0.6)',
+                                drawBorder: false,
+                                borderDash: [3, 3]
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 11, 
+                                    family: 'JetBrains Mono',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10,
+                                beginAtZero: true
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Сходство: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 800,
+                        easing: 'easeInOutQuart',
+                        delay: (context) => {
+                            let delay = 0;
+                            if (context.type === 'data' && context.mode === 'default') {
+                                delay = context.dataIndex * 100;
+                            }
+                            return delay;
+                        }
+                    }
+                }
             });
         } catch (error) {
             console.error('Error creating semantic tab chart:', error);
@@ -3070,24 +3868,59 @@ function initializeCharts() {
     if (criteriaCtxTab && chartData.criteria) {
         try {
             new Chart(criteriaCtxTab, {
-                type: 'pie',
+                type: 'doughnut',
                 data: {
                     labels: chartData.criteria.labels,
                     datasets: [{
                         data: chartData.criteria.data,
                         backgroundColor: chartData.criteria.backgroundColors,
                         borderColor: chartData.criteria.colors,
-                        borderWidth: 2
+                        borderWidth: 2,
+                        hoverOffset: 8
                     }]
                 },
                 options: {
-                    ...commonOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
                     plugins: {
-                        ...commonOptions.plugins,
                         legend: {
-                            ...commonOptions.plugins.legend,
-                            position: 'right'
+                            position: 'right',
+                            labels: {
+                                padding: 20,
+                                font: {
+                                    size: 13,
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#475569',
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
                         }
+                    },
+                    animation: {
+                        animateScale: true,
+                        animateRotate: true,
+                        duration: 800,
+                        easing: 'easeInOutQuart'
                     }
                 }
             });
@@ -3097,26 +3930,87 @@ function initializeCharts() {
     }
 
     const answersCtxTab = document.getElementById('answersChartTab');
-    if (answersCtxTab && chartData.answers) {
+    if (answersCtxTab && chartData.plagiarism) {
         try {
             new Chart(answersCtxTab, {
-                type: 'pie',
+                type: 'bar',
                 data: {
-                    labels: chartData.answers.labels,
+                    labels: chartData.plagiarism.labels,
                     datasets: [{
-                        data: chartData.answers.data,
-                        backgroundColor: chartData.answers.backgroundColors,
-                        borderColor: chartData.answers.colors,
-                        borderWidth: 2
+                        data: chartData.plagiarism.data,
+                        backgroundColor: chartData.plagiarism.backgroundColors,
+                        borderColor: chartData.plagiarism.colors,
+                        borderWidth: 2,
+                        borderRadius: 12,
+                        borderSkipped: false,
+                        hoverBackgroundColor: chartData.plagiarism.colors,
                     }]
                 },
                 options: {
-                    ...commonOptions,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 12, 
+                                    family: 'Inter',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(226, 232, 240, 0.6)',
+                                drawBorder: false,
+                                borderDash: [3, 3]
+                            },
+                            ticks: {
+                                font: { 
+                                    size: 11, 
+                                    family: 'JetBrains Mono',
+                                    weight: '500'
+                                },
+                                color: '#64748b',
+                                padding: 10,
+                                beginAtZero: true
+                            },
+                            beginAtZero: true
+                        }
+                    },
                     plugins: {
-                        ...commonOptions.plugins,
                         legend: {
-                            ...commonOptions.plugins.legend,
-                            position: 'right'
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleFont: { size: 14, family: 'Inter', weight: '600' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Ответы: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 800,
+                        easing: 'easeInOutQuart',
+                        delay: (context) => {
+                            let delay = 0;
+                            if (context.type === 'data' && context.mode === 'default') {
+                                delay = context.dataIndex * 100;
+                            }
+                            return delay;
                         }
                     }
                 }
@@ -3128,7 +4022,7 @@ function initializeCharts() {
 }
 </script>
 
-<script src="assets/vendor/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -3158,6 +4052,32 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btn) btn.click();
   }
 });
+
+  document.querySelectorAll('.import-submit-btn').forEach(button => {
+    button.addEventListener('click', function(e) {
+      console.log('=== IMPORT BUTTON CLICKED ===');
+      console.log('Button text:', this.textContent);
+      console.log('Form action:', this.form.action);
+      console.log('Form method:', this.form.method);
+      
+      const formData = new FormData(this.form);
+      console.log('Form data:');
+      for (let [key, value] of formData.entries()) {
+        console.log(`  ${key}:`, value);
+      }
+      
+      const logData = `=== ${new Date().toISOString()} ===\n`;
+      const logEntry = logData + `Button clicked: ${this.textContent}\nForm action: ${this.form.action}\n`;
+      
+      fetch('log_import.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'log_data=' + encodeURIComponent(logEntry)
+      }).catch(err => console.log('Log fetch error:', err));
+    });
+  });
 </script>
 
 <?php

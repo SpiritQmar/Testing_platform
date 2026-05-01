@@ -3,8 +3,6 @@
 require_once __DIR__ . '/../includes/layout.php';
 require_once __DIR__ . '/../db.php';
 
-require_login();
-require_role(['superadmin', 'admin']);
 
 $error = null;
 $success = null;
@@ -60,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['syllabus_file']) && 
                 ':fpath' => 'uploads/syllabuses/' . $fileName,
                 ':ftype' => $extension,
                 ':text' => $text,
-                ':uid' => current_user()['user_id']
+                ':uid' => 1
             ]);
             $syllabusId = (int)$pdo->lastInsertId();
 
@@ -612,7 +610,7 @@ echo $pageScripts;
     <?php endif; ?>
   </div>
 </div>
-<script src="../assets/vendor/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <?php render_footer(); ?>
 
 <?php

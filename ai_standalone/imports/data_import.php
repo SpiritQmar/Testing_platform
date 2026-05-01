@@ -1,8 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../db.php';
-require_login();
-require_role(['superadmin', 'admin']);
 
 $error = null;
 $success = null;
@@ -191,7 +189,7 @@ $lang = get_lang();
 <head>
   <meta charset="utf-8">
   <title>Data Import</title>
-  <link href="../assets/vendor/css/bootstrap-lite.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="../assets/app.css" rel="stylesheet">
   <style>body{background:#f5f5f5}.stats-box{background:#fff;border-radius:12px;padding:1.5rem;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1)}</style>
 </head>
@@ -245,7 +243,7 @@ $lang = get_lang();
     </div>
   </div>
 </div>
-<script src="../assets/vendor/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 

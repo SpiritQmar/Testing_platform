@@ -1,21 +1,17 @@
 <?php
 
-// Simple test log at the very beginning
 file_put_contents(__DIR__ . '/debug_criteria.log', "=== " . date('Y-m-d H:i:s') . " === FILE ACCESSED ===\n", FILE_APPEND | LOCK_EX);
 
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../db.php';
 
-// Debug logging right after requires
 $logFile = __DIR__ . '/debug_criteria.log';
 $logData = "=== " . date('Y-m-d H:i:s') . " === AFTER REQUIRES ===\n";
 file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
 
-require_login();
 $logData = "=== " . date('Y-m-d H:i:s') . " === AFTER LOGIN ===\n";
 file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
 
-require_role(['superadmin', 'admin']);
 $logData = "=== " . date('Y-m-d H:i:s') . " === AFTER ROLE CHECK ===\n";
 file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
 
@@ -23,14 +19,12 @@ $error = null;
 $success = null;
 $stats = [];
 
-// Debug logging at the very beginning
 $logData = "=== " . date('Y-m-d H:i:s') . " === SCRIPT START ===\n";
 $logData .= "REQUEST_METHOD: " . $_SERVER['REQUEST_METHOD'] . "\n";
 $logData .= "POST data: " . json_encode($_POST) . "\n";
 $logData .= "FILES data: " . json_encode($_FILES) . "\n";
 file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
 
-// Debug POST condition
 $logData = "=== " . date('Y-m-d H:i:s') . " === POST CONDITION CHECK ===\n";
 $logData .= "REQUEST_METHOD: '" . $_SERVER['REQUEST_METHOD'] . "'\n";
 $logData .= "Is POST: " . ($_SERVER['REQUEST_METHOD'] === 'POST' ? 'YES' : 'NO') . "\n";
@@ -53,7 +47,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['criteria_file'])) {
     $file = $_FILES['criteria_file'];
     $importId = (int)($_POST['import_id'] ?? 0);
     
-    // Debug logging
     $logData = "=== " . date('Y-m-d H:i:s') . " === PROCESSING ===\n";
     $logData .= "Import ID: $importId\n";
     $logData .= "File: " . $file['name'] . "\n";
@@ -61,46 +54,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['criteria_file'])) {
     $logData .= "Error: " . $file['error'] . "\n";
     file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
 
-    if ($file['error'] === UPLOAD_ERR_OK) {
+    $logData = "=== " . date('Y-m-d H:i:s') . " === CHECKING UPLOAD ERROR ===\n";
+$logData .= "File error code: " . $file['error'] . "\n";
+$logData .= "UPLOAD_ERR_OK constant: " . UPLOAD_ERR_OK . "\n";
+$logData .= "Is error OK: " . ($file['error'] === UPLOAD_ERR_OK ? 'YES' : 'NO') . "\n";
+file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
+
+if ($file['error'] === UPLOAD_ERR_OK) {
         $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         $logData .= "Extension: $extension\n";
+        file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
         
-        if (!in_array($extension, ['csv', 'xlsx', 'xls'])) {
+        $logData .= "=== " . date('Y-m-d H:i:s') . " === CHECKING EXTENSION ===\n";
+$logData .= "Extension: '$extension'\n";
+$logData .= "In allowed formats: " . (in_array($extension, ['csv', 'xlsx', 'xls']) ? 'YES' : 'NO') . "\n";
+file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
+
+if (!in_array($extension, ['csv', 'xlsx', 'xls'])) {
             $error = 'Supported formats: CSV, XLSX, XLS';
             $logData .= "ERROR: Unsupported format\n";
+            file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
         } else {
+            $logData .= "=== " . date('Y-m-d H:i:s') . " === READING CSV FILE ===\n";
+            file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
+            
             try {
                 $data = [];
                 if ($extension === 'csv') {
+                    $logData .= "Calling readCsvFile()...\n";
+                    file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
+                    
                     $data = readCsvFile($file['tmp_name']);
+                    
+                    $logData .= "CSV read successfully. Rows: " . count($data) . "\n";
+                    file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
                 } else {
                     $error = 'Please convert Excel to CSV first';
                     $logData .= "ERROR: Excel not supported\n";
+                    file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
                 }
 
                 $logData .= "Data rows: " . count($data) . "\n";
+file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
                 
                 if (empty($data)) {
+                    $logData .= "ERROR: File is empty\n";
+                    file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
                     throw new Exception('File is empty');
                 }
 
-                // Log first few rows for debugging
-                $logData .= "Sample data:\n";
+                $logData .= "=== " . date('Y-m-d H:i:s') . " === SAMPLE DATA ===\n";
                 for ($i = 0; $i < min(3, count($data)); $i++) {
                     $logData .= "Row " . ($i + 1) . ": " . json_encode($data[$i]) . "\n";
                 }
+                file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
 
+                $logData .= "=== " . date('Y-m-d H:i:s') . " === STARTING DATABASE TRANSACTION ===\n";
+                file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
+                
                 $pdo->beginTransaction();
                 $inserted = 0;
                 $errors = 0;
 
                 foreach ($data as $index => $row) {
                     try {
-                        $id = trim($row['ID'] ?? '');
-                        $kaz = trim($row['Қазақша'] ?? '');
-                        $rus = trim($row['Русский'] ?? '');
-                        $eng = trim($row['English'] ?? '');
-                        $weight = floatval($row['Вес'] ?? 0);
+                        $id = trim($row['ID критерия'] ?? '');
+                        $kaz = trim($row['Наименование критерия на казахском'] ?? '');
+                        $rus = trim($row['Наименование критерия на русском'] ?? '');
+                        $eng = trim($row['Наименование критерия на английском'] ?? '');
+                        $weight = floatval($row['Доля от оценки (в %)'] ?? 0);
 
                         $logData .= "Row " . ($index + 1) . ": ID='$id', Kaz='$kaz', Rus='$rus', Eng='$eng', Weight=$weight\n";
 
@@ -133,7 +155,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['criteria_file'])) {
 
                 $pdo->commit();
 
-                // Update imports_log if record exists, otherwise skip silently
                 try {
                     $stmt = $pdo->prepare("UPDATE imports_log SET rows_imported = :i WHERE import_id = :id");
                     $updateResult = $stmt->execute([':i' => $inserted, ':id' => $importId]);
@@ -142,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['criteria_file'])) {
                     $logData .= "Update imports_log skipped: " . $e->getMessage() . "\n";
                 }
 
-                $success = "Imported: {$inserted} criteria" . ($errors > 0 ? ", errors: {$errors}" : "");
+                $success = "Успешно импортировано критериев: {$inserted}" . ($errors > 0 ? ", ошибок: {$errors}" : "");
                 $stats = [
                     'total_rows' => count($data),
                     'imported' => $inserted,
@@ -151,7 +172,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['criteria_file'])) {
                 
                 $logData .= "Final result: $success\n";
                 
-                // Redirect to import page with success message
                 $_SESSION['import_flash'] = [
                     'type' => 'success',
                     'message' => $success

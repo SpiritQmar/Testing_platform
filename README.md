@@ -5,6 +5,8 @@
 [🇷🇺 Русский](README.ru.md) | [en English](README.en.md) | [🇰🇿 Қазақша](README.kz.md)
 
 
+## Возможности
+
 - **Валидация вопросов** - проверка соответствия силлабусу
 - **Quality Analysis** - анализ сложности и дискриминативности вопросов
 - **Correlation Analysis** - корреляция между вопросами и общими баллами
@@ -15,7 +17,6 @@
 - **Импорт данных** - загрузка силлабусов и результатов экзаменов
 
 ## Запуск через Docker 
- 
  
 ```bash
 docker-compose up -d
@@ -28,32 +29,29 @@ docker-compose up -d
 
 ## Локальная установка
 
-- **PHP:** 8.0 +
-- **MySQL/MariaDB:** 5.7 +
-- **Web-сервер:** пример Apache (XAMPP)
+### Требования
+
+- **PHP:** 8.0+
+- **MySQL/MariaDB:** 5.7+
+- **Web-сервер:** Apache/Nginx
 - **Python:** 3.8+
 - **Расширения PHP:** pdo_mysql, mbstring, json, zip, gd
 
 ### Настройки
 
 1.  Открыть http://localhost/phpmyadmin
-2. Создайте новую базу данных с именем `exam_analyzer_2`
+2. Создайте новую базу данных с именем `exam_analyzer_2` (можно поменять в конфигах)
 3. Импортируйте SQL:  `sql/full_database_setup.sql`
-4. Настройте подключение к БД в `ai_standalone/config.php`
-5. При первом запуске будет создан пользователь по умолчанию:
-   - Логин: `superadmin`
-   - Пароль: `superadmin123`
+
 
 ### Python сервис
 
-Для эмбеддингов, семантики и импорта силлабусов:
+Для эмбеддингов, семантики и импорта силлабусов используется модель из Hugging Face:
+- Модель: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+- Поддержка: русский, английский, казахский
+
 ```bash
 cd ai_standalone/python_services
 pip install -r requirements.txt
 python -m uvicorn embeddings_api:app --host 127.0.0.1 --port 8000
-
 ```
-
-
- 
-

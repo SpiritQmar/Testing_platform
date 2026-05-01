@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -6,27 +9,6 @@ require_once __DIR__ . '/../db.php';
 
 function h(string $s): string {
     return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-}
-
-function current_user(): ?array {
-    return $_SESSION['user'] ?? null;
-}
-
-function require_login(): void {
-    if (!current_user()) {
-        header('Location: login.php');
-        exit;
-    }
-}
-
-function require_role(array $roles): void {
-    require_login();
-    $u = current_user();
-    if (!$u || !in_array($u['role_name'], $roles, true)) {
-        http_response_code(403);
-        echo '<h1>403 - Доступ запрещен</h1><p>Недостаточно прав.</p>';
-        exit;
-    }
 }
 
 function flash_set(string $type, string $text): void {
@@ -96,12 +78,12 @@ function t(string $key): string {
         ],
     ];
     $lang = get_lang();
-    
+
     global $translations;
     if (isset($translations[$key])) {
         return $translations[$key];
     }
-    
+
     try {
         global $pdo;
         if ($pdo) {
@@ -131,21 +113,4 @@ function get_help(string $key): ?array {
     } catch (Throwable $e) {
         return null;
     }
-}
-
-function app_menu(): array {
-    $u = current_user();
-    if (!$u) {
-        return [];
-    }
-
-    $out = [
-        ['route' => 'index.php', 'title' => t('nav_ai')],
-    ];
-
-    if (in_array($u['role_name'], ['superadmin', 'admin'], true)) {
-        $out[] = ['route' => 'import_syllabus.php', 'title' => 'Импорт силлабусов'];
-    }
-
-    return $out;
 }

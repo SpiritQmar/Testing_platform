@@ -1,85 +1,99 @@
 <?php
 
+file_put_contents(__DIR__ . '/debug_details.log', "=== " . date('Y-m-d H:i:s') . " === FILE ACCESSED ===\n", FILE_APPEND | LOCK_EX);
+
 ini_set('max_execution_time', 300);
 ini_set('memory_limit', '512M');
 set_time_limit(300);
 
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../db.php';
-require_login();
-require_role(['superadmin', 'admin']);
+
+$logFile = __DIR__ . '/debug_details.log';
+$logData = "=== " . date('Y-m-d H:i:s') . " === SCRIPT START ===\n";
+$logData .= "REQUEST_METHOD: " . $_SERVER['REQUEST_METHOD'] . "\n";
+$logData .= "POST data: " . json_encode($_POST) . "\n";
+$logData .= "FILES data: " . json_encode($_FILES) . "\n";
+file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
 
 $error = null;
 $success = null;
 $stats = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['details_file'])) {
+    $logData = "=== " . date('Y-m-d H:i:s') . " === PROCESSING POST ===\n";
+    file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
     verify_csrf_or_fail();
     $file = $_FILES['details_file'];
+    $importId = (int)($_POST['import_id'] ?? 0);
 
     if ($file['error'] === UPLOAD_ERR_OK) {
         $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if (!in_array($extension, ['csv'])) {
             $error = 'Supported format: CSV';
         } else {
+            $logData = "=== " . date('Y-m-d H:i:s') . " === READING CSV FILE ===\n";
+            file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
+            
             try {
                 $data = readCsvFile($file['tmp_name']);
+                
+                $logData .= "CSV read successfully. Rows: " . count($data) . "\n";
+                file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
 
                 if (empty($data)) {
+                    $logData .= "ERROR: File is empty\n";
+                    file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
                     throw new Exception('File is empty');
                 }
 
+                                $logData .= "=== " . date('Y-m-d H:i:s') . " === SAMPLE DATA ===\n";
+                for ($i = 0; $i < min(3, count($data)); $i++) {
+                    $logData .= "Row " . ($i + 1) . ": " . json_encode($data[$i]) . "\n";
+                }
+                file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
+
                 $pdo->beginTransaction();
-
-                $stmtLog = $pdo->prepare("INSERT INTO imports_log (source_filename, source_format, rows_total, rows_imported, import_type) VALUES (:filename, :fmt, :total, 0, 'evaluation_details')");
-                $stmtLog->execute([':filename' => $file['name'], ':fmt' => $extension, ':total' => count($data)]);
-                $importId = (int)$pdo->lastInsertId();
-
-                $stmtInsert = $pdo->prepare("
-                    INSERT INTO evaluation_details (work_id, criteria_id, score)
-                    VALUES (:wid, :cid, :score)
-                    ON DUPLICATE KEY UPDATE score = VALUES(score)
-                ");
-
-                $stmtCheckCriteria = $pdo->prepare("SELECT criteria_id FROM evaluation_criteria WHERE criteria_id = :cid");
-                $stmtCheckWork = $pdo->prepare("SELECT work_id FROM work_mapping WHERE work_id = :wid");
-
                 $inserted = 0;
                 $errors = 0;
                 $invalidCriteria = 0;
-                $invalidWorkId = 0;
                 $skipped = 0;
-                $duplicates = 0;
 
-                foreach ($data as $index => $row) {
-                    if ($index === 0) continue;
+                                $stmt = $pdo->query("SELECT criteria_id FROM evaluation_criteria");
+                $existingCriteria = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+                $existingCriteria = array_flip($existingCriteria);
 
-                    try {
-                        $workCode = !empty($row['Код работы'] ?? $row['Work Code'] ?? $row['work_id']) ? (int)($row['Код работы'] ?? $row['Work Code'] ?? $row['work_id']) : null;
-                        $criteriaId = !empty($row['ID критерия'] ?? $row['Criterion ID'] ?? $row['criteria_id']) && is_numeric($row['ID критерия'] ?? $row['Criterion ID'] ?? $row['criteria_id']) ? (int)($row['ID критерия'] ?? $row['Criterion ID'] ?? $row['criteria_id']) : null;
-                        $score = !empty($row['Оценка по 100 шкале'] ?? $row['Score'] ?? $row['score']) && is_numeric($row['Оценка по 100 шкале'] ?? $row['Score'] ?? $row['score']) ? (float)($row['Оценка по 100 шкале'] ?? $row['Score'] ?? $row['score']) : null;
+                $logData .= "=== " . date('Y-m-d H:i:s') . " === STARTING DATABASE PROCESSING ===\n";
+file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
 
-                        if (!$workCode || !$criteriaId || $score === null) {
-                            $skipped++;
-                            continue;
-                        }
+$rowCount = 0;
+foreach ($data as $row) {
+    $rowCount++;
+    if ($rowCount % 500 == 0) {
+        $logData .= "Processed $rowCount rows...\n";
+        file_put_contents($logFile, $logData, FILE_APPEND | LOCK_EX);
+    }
+    
+    try {
+        $workId = trim($row['Код работы'] ?? '');
+        $criteriaId = trim($row['ID критерия'] ?? '');
+        $score = floatval($row['Оценка по 100 шкале'] ?? 0);
 
-                        if ($criteriaId) {
-                            $stmtCheckCriteria->execute([':cid' => $criteriaId]);
-                            if (!$stmtCheckCriteria->fetch()) {
+        if ($workId && $criteriaId && $score >= 0 && $score <= 100) {
+                            if (!isset($existingCriteria[$criteriaId])) {
                                 $invalidCriteria++;
                                 continue;
                             }
-                        }
 
-                        $workId = $workCode;
-                        if ($workId && $criteriaId && $score !== null) {
-                            $stmtInsert->execute([
+                            $stmt = $pdo->prepare("INSERT INTO evaluation_details (work_id, criteria_id, score) VALUES (:wid, :cid, :score) ON DUPLICATE KEY UPDATE score = VALUES(score)");
+                            $stmt->execute([
                                 ':wid' => $workId,
                                 ':cid' => $criteriaId,
                                 ':score' => $score
                             ]);
                             $inserted++;
+                        } else {
+                            $skipped++;
                         }
                     } catch (Throwable $e) {
                         $errors++;
@@ -88,10 +102,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['details_file'])) {
 
                 $pdo->commit();
 
-                $stmt = $pdo->prepare("UPDATE imports_log SET rows_imported = :i WHERE import_id = :id");
-                $stmt->execute([':i' => $inserted, ':id' => $importId]);
+                                try {
+                    $stmt = $pdo->prepare("UPDATE imports_log SET rows_imported = :i WHERE import_id = :id");
+                    $stmt->execute([':i' => $inserted, ':id' => $importId]);
+                } catch (Throwable $e) {
+                }
 
-                $success = "Imported: {$inserted} records" . ($errors > 0 ? ", errors: {$errors}" : "") . ($invalidCriteria > 0 ? ", invalid criteria: {$invalidCriteria}" : "") . ($skipped > 0 ? ", skipped: {$skipped}" : "");
+                $success = "Успешно импортировано деталей оценок: {$inserted}" . ($errors > 0 ? ", ошибок: {$errors}" : "") . ($invalidCriteria > 0 ? ", неверных критериев: {$invalidCriteria}" : "") . ($skipped > 0 ? ", пропущено: {$skipped}" : "");
                 $stats = [
                     'total_rows' => count($data),
                     'imported' => $inserted,
@@ -99,6 +116,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['details_file'])) {
                     'invalid_criteria' => $invalidCriteria,
                     'skipped' => $skipped
                 ];
+                
+                $_SESSION['import_flash'] = [
+                    'type' => 'success',
+                    'message' => $success
+                ];
+                header('Location: ../index.php?section=import&import_tab=details');
+                exit;
 
             } catch (Throwable $e) {
                 if ($pdo->inTransaction()) {
@@ -124,30 +148,35 @@ $lang = get_lang();
 <head>
   <meta charset="utf-8">
   <title>Import Evaluation Details</title>
-  <link href="../assets/vendor/css/bootstrap-lite.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="../assets/app.css" rel="stylesheet">
   <style>body{background:#f5f5f5}.upload-box{background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:800px;margin:0 auto}</style>
 </head>
 <body>
 <?php require_once __DIR__ . '/../includes/layout.php'; ?>
-
-<div class="container-fluid py-4">
+<div class="container py-5">
   <div class="upload-box">
-    <h1 class="h3 mb-4">Import Evaluation Details</h1>
+    <h2 class="mb-4">Import Evaluation Details</h2>
+    
+    <?php if ($error): ?>
+      <div class="alert alert-danger"><?= h($error) ?></div>
+    <?php endif; ?>
+    
+    <?php if ($success): ?>
+      <div class="alert alert-success"><?= h($success) ?></div>
+    <?php endif; ?>
 
-    <?php if ($success): ?><div class="alert alert-success"><?= h($success) ?></div><?php endif; ?>
-    <?php if ($error): ?><div class="alert alert-danger"><?= h($error) ?></div><?php endif; ?>
-
-    <div class="row g-3 mb-4">
-      <div class="col-md-4">
+    <?php if (!empty($stats)): ?>
+    <div class="row mb-4">
+      <div class="col-md-3">
         <div class="card">
           <div class="card-body text-center">
-            <div class="h2"><?= number_format($stats['total_details']) ?></div>
-            <div class="small text-muted">Total Details</div>
+            <div class="h2"><?= number_format($stats['total_rows'] ?? 0) ?></div>
+            <div class="small text-muted">Total Rows</div>
           </div>
         </div>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-3">
         <div class="card">
           <div class="card-body text-center">
             <div class="h2"><?= number_format($stats['imported'] ?? 0) ?></div>
@@ -155,7 +184,7 @@ $lang = get_lang();
           </div>
         </div>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-3">
         <div class="card">
           <div class="card-body text-center">
             <div class="h2"><?= number_format($stats['invalid_criteria'] ?? 0) ?></div>
@@ -163,10 +192,24 @@ $lang = get_lang();
           </div>
         </div>
       </div>
+      <div class="col-md-3">
+        <div class="card">
+          <div class="card-body text-center">
+            <div class="h2"><?= number_format($stats['total_details'] ?? 0) ?></div>
+            <div class="small text-muted">Details Records</div>
+          </div>
+        </div>
+      </div>
     </div>
+    <?php endif; ?>
 
     <form method="post" enctype="multipart/form-data">
       <?= csrf_input() ?>
+      <div class="mb-3">
+        <label class="form-label">Import ID</label>
+        <input type="number" name="import_id" class="form-control" required>
+        <small class="text-muted">Enter the import ID from your current import session</small>
+      </div>
       <div class="mb-3">
         <label class="form-label">Evaluation Details File (CSV)</label>
         <input type="file" name="details_file" class="form-control" accept=".csv" required>
@@ -177,7 +220,7 @@ $lang = get_lang();
     </form>
   </div>
 </div>
-<script src="../assets/vendor/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 

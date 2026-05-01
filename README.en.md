@@ -33,10 +33,8 @@ docker-compose up -d
 1. Open http://localhost/phpmyadmin
 2. Create a new database named `exam_analyzer_2`
 3. Import SQL: `sql/full_database_setup.sql`
-4. Configure database connection in `ai_standalone/config.php`
-5. Default user will be created on first run:
-   - Login: `superadmin`
-   - Password: `superadmin123`
+
+
 
 ### Python Service
 
