@@ -1,0 +1,42 @@
+<?php
+if (session_status() !== PHP_SESSION_ACTIVE) @session_start();
+
+function current_lang(): string {
+    if (isset($_GET['lang']) && in_array($_GET['lang'], ['ru','en','kk'], true)) {
+        $_SESSION['lang'] = $_GET['lang'];
+    }
+    return $_SESSION['lang'] ?? 'ru';
+}
+
+function tr(string $key): string {
+    $l = current_lang();
+    $d = [
+        'app.title'=>['ru'=>'Анализ качества экзаменационных вопросов ✨','en'=>'Exam Question Quality Analysis ✨','kk'=>'Емтихан сұрақтарының сапасын талдау ✨'],
+        'app.hello'=>['ru'=>'Добро пожаловать, Teacher User','en'=>'Welcome back, Teacher User','kk'=>'Қош келдіңіз, Teacher User'],
+        'nav.dashboard'=>['ru'=>'Панель управления','en'=>'Dashboard','kk'=>'Басқару тақтасы'],
+        'nav.analytics'=>['ru'=>'Analytics','en'=>'Analytics','kk'=>'Analytics'],
+        'nav.questions'=>['ru'=>'Вопросы','en'=>'Questions','kk'=>'Сұрақтар'],
+        'nav.import'=>['ru'=>'Импорт CSV','en'=>'CSV Import','kk'=>'CSV импорты'],
+        'nav.settings'=>['ru'=>'Settings','en'=>'Settings','kk'=>'Settings'],
+        'search'=>['ru'=>'Search questions, disciplines...','en'=>'Search questions, disciplines...','kk'=>'Search questions, disciplines...'],
+        'dashboard.overview'=>['ru'=>'Dashboard Overview','en'=>'Dashboard Overview','kk'=>'Dashboard Overview'],
+        'dashboard.sub'=>['ru'=>"Welcome back! Here's what's happening with your questions today.",'en'=>"Welcome back! Here's what's happening with your questions today.",'kk'=>"Welcome back! Here's what's happening with your questions today."],
+        'metric.total'=>['ru'=>'Всего вопросов','en'=>'Total Questions','kk'=>'Барлық сұрақтар'],
+        'metric.complexity'=>['ru'=>'Сред. сложность','en'=>'Avg Complexity','kk'=>'Орташа қиындық'],
+        'metric.correlation'=>['ru'=>'Сред. корреляция','en'=>'Avg Correlation','kk'=>'Орташа корреляция'],
+        'metric.problems'=>['ru'=>'Обнаружено проблем','en'=>'Problems Found','kk'=>'Табылған мәселелер'],
+        'chart.diff'=>['ru'=>'Распределение сложности','en'=>'Question Complexity Breakdown','kk'=>'Қиындық бөлінісі'],
+        'chart.diff.sub'=>['ru'=>'Question complexity breakdown','en'=>'Question complexity breakdown','kk'=>'Question complexity breakdown'],
+        'chart.disc'=>['ru'=>'Вопросы по дисциплинам','en'=>'Questions by disciplines','kk'=>'Пәндер бойынша сұрақтар'],
+        'chart.disc.sub'=>['ru'=>'Distribution across subjects','en'=>'Distribution across subjects','kk'=>'Distribution across subjects'],
+        'login.title'=>['ru'=>'Вход в систему','en'=>'Login','kk'=>'Кіру'],
+        'logout'=>['ru'=>'Выход','en'=>'Logout','kk'=>'Шығу'],
+    ];
+    return $d[$key][$l] ?? $d[$key]['ru'] ?? $key;
+}
+
+function lang_url($lang) {
+    $params = $_GET;
+    $params['lang'] = $lang;
+    return strtok($_SERVER['REQUEST_URI'], '?') . '?' . http_build_query($params);
+}
