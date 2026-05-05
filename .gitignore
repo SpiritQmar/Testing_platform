@@ -1,0 +1,15 @@
+node_modules/
+uploads/
+ai_analytics/logs/
+logs/
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Ignore real documents, keep only placeholder read.md files
+documents/**
+!documents/
+!documents/**/
+!documents/**/read.md

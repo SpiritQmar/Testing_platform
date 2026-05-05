@@ -1,0 +1,9 @@
+.import-content {
+  padding: 2rem;
+}
+
+.import-frame {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+}
