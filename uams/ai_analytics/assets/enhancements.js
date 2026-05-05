@@ -1,0 +1,87 @@
+(function() {
+  'use strict';
+
+  const sectionButtons = document.querySelectorAll('[onclick^="showSection"]');
+  sectionButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+      const sections = document.querySelectorAll('[id^="section-"]');
+      sections.forEach(section => {
+        if (section.style.display !== 'none') {
+          section.classList.add('fade-in');
+        }
+      });
+    });
+  });
+
+  const chartContainers = document.querySelectorAll('.chart-container');
+  chartContainers.forEach(container => {
+    if (!container.querySelector('canvas')) {
+      const skeleton = document.createElement('div');
+      skeleton.className = 'skeleton';
+      skeleton.style.cssText = 'width: 100%; height: 100%;';
+      container.appendChild(skeleton);
+    }
+  });
+
+  if ('IntersectionObserver' in window) {
+    const chartObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const chartId = entry.target.id;
+          if (chartId && !entry.target.dataset.loaded) {
+            entry.target.dataset.loaded = 'true';
+            loadChartData(chartId);
+          }
+        }
+      });
+    }, { rootMargin: '50px' });
+
+    document.querySelectorAll('[id^="chart-"]').forEach(chart => {
+      chartObserver.observe(chart);
+    });
+  }
+
+  if (typeof Chart !== 'undefined') {
+    Chart.defaults.font.family = "'Inter', sans-serif";
+    Chart.defaults.color = getComputedStyle(document.documentElement)
+      .getPropertyValue('--text-secondary').trim();
+    Chart.defaults.plugins.legend.display = true;
+    Chart.defaults.plugins.legend.position = 'bottom';
+    Chart.defaults.plugins.tooltip.enabled = true;
+    Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+    Chart.defaults.plugins.tooltip.padding = 12;
+    Chart.defaults.plugins.tooltip.cornerRadius = 8;
+    Chart.defaults.animation.duration = 400;
+  }
+
+  document.querySelectorAll('.table tbody tr').forEach(row => {
+    row.style.cursor = 'pointer';
+    row.addEventListener('click', function() {
+      this.style.background = 'var(--bg-tertiary)';
+      setTimeout(() => {
+        this.style.background = '';
+      }, 300);
+    });
+  });
+
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.card, .panel, .quick-guide-card').forEach((el, i) => {
+      el.style.opacity = '0';
+      setTimeout(() => {
+        el.classList.add('fade-in');
+        el.style.opacity = '1';
+      }, i * 50);
+    });
+  });
+
+  let resizeTimer;
+  window.addEventListener('resize', function() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function() {
+      if (typeof Chart !== 'undefined') {
+        Object.values(Chart.instances).forEach(chart => chart.resize());
+      }
+    }, 250);
+  });
+
+})();
