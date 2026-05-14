@@ -19,7 +19,7 @@ final class DiscriminationService
         $this->analyticsConfig = require __DIR__ . '/../config.php';
         $this->logger = getLogger();
         $this->ruleClassifier = new RuleClassifierService($databaseConnection);
-        $this->minStudentsForDiscrimination = $this->analyticsConfig['coefficients']['discrimination']['min_students'];
+        $this->minStudentsForDiscrimination = (int)$this->analyticsConfig['coefficients']['discrimination']['min_students'];
     }
 
     public function setMinStudentsForDiscrimination(int $value): void

@@ -8,7 +8,8 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Ignore real documents, keep only placeholder read.md files
+__pycache__/
+*.pyc
 documents/**
 !documents/
 !documents/**/

@@ -1,10 +1,11 @@
 import React, { useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { t } from '../utils/translations'
 import './Import.css'
 
 const BASE = '/uams/backend/import/import.php'
 
-const Import = ({ language = 'en' }) => {
+const Import = ({ language = 'en', setCurrentPage }) => {
   const iframeRef = useRef(null)
   const currentLang = useRef(language)
 
@@ -26,9 +27,9 @@ const Import = ({ language = 'en' }) => {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        Импорт данных
+        {t('importData', language)}
       </motion.h2>
-      <p className="page-subtitle">Силлабусы, результаты экзаменов, вопросы, критерии оценки</p>
+      <p className="page-subtitle">{t('importDataSubtitle', language)}</p>
 
       <motion.div
         className="import-frame"

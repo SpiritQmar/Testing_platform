@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { TrendingUp, TrendingDown, FileQuestion, Users, ClipboardList, Award } from 'lucide-react'
+import { TrendingUp, TrendingDown, FileQuestion, Users, ClipboardList, Award, Database, Cpu, SlidersHorizontal, Gauge, Network, Scan } from 'lucide-react'
 import { t } from '../utils/translations'
 import './Dashboard.css'
 
@@ -21,8 +21,8 @@ const Dashboard = ({ language = 'en' }) => {
 
   useEffect(() => {
     Promise.all([
-      fetch('/uams/ai_analytics/api/overview.php').then(res => res.json()),
-      fetch('/uams/ai_analytics/api/charts.php').then(res => res.json())
+      fetch('/uams/ai_analytics/api/overview.php?v=' + Date.now()).then(res => res.json()),
+      fetch('/uams/ai_analytics/api/charts.php?v=' + Date.now()).then(res => res.json())
     ])
       .then(([overviewData, chartsData]) => {
         setData(overviewData)
@@ -48,63 +48,143 @@ const Dashboard = ({ language = 'en' }) => {
 
       const ctx = ref.current.getContext('2d')
 
-      const options = {
-        responsive: true,
-        maintainAspectRatio: true,
-        plugins: {
-          legend: {
-            position: 'bottom',
-            display: type === 'doughnut' || type === 'pie'
-          },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                const label = context.label || ''
-                let value = 0
-
-                if (type === 'doughnut' || type === 'pie') {
-                  value = context.parsed
-                } else if (type === 'bar' || type === 'line') {
-                  value = context.parsed.y
-                } else if (type === 'radar') {
-                  value = context.parsed.r
-                }
-
-                return label + ': ' + value
-              }
-            }
+      const tooltipDefaults = {
+        backgroundColor: '#0f172a',
+        titleColor: '#f1f5f9',
+        bodyColor: '#94a3b8',
+        borderColor: '#1e293b',
+        borderWidth: 1,
+        padding: 12,
+        cornerRadius: 10,
+        titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+        bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
+        displayColors: true,
+        boxWidth: 8,
+        boxHeight: 8,
+        usePointStyle: true,
+        callbacks: {
+          label: function(context) {
+            const label = context.label || ''
+            let value = 0
+            if (type === 'doughnut' || type === 'pie') value = context.parsed
+            else if (type === 'bar' || type === 'line') value = context.parsed.y
+            else if (type === 'radar') value = context.parsed.r
+            return ` ${label}: ${value}`
           }
         }
       }
 
-      if (type === 'bar' || type === 'line') {
+      const options = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 700, easing: 'easeInOutQuart' },
+        plugins: {
+          legend: {
+            display: type === 'doughnut' || type === 'pie',
+            position: 'bottom',
+            labels: {
+              padding: 20,
+              usePointStyle: true,
+              pointStyleWidth: 10,
+              font: { size: 12, family: "'Inter', -apple-system, sans-serif", weight: '500' },
+              color: '#64748b',
+              boxWidth: 10,
+              boxHeight: 10
+            }
+          },
+          tooltip: tooltipDefaults
+        }
+      }
+
+      if (type === 'doughnut' || type === 'pie') {
+        options.cutout = type === 'doughnut' ? '72%' : '0%'
+        data.datasets[0].hoverOffset = 10
+        data.datasets[0].borderWidth = 3
+        data.datasets[0].borderColor = '#ffffff'
+        data.datasets[0].hoverBorderColor = '#ffffff'
+      }
+
+      if (type === 'bar') {
         options.scales = {
           y: {
-            beginAtZero: true
+            beginAtZero: true,
+            grid: { color: 'rgba(226,232,240,0.7)', drawBorder: false },
+            ticks: { color: '#94a3b8', font: { size: 11 } },
+            border: { display: false }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: '#64748b', font: { size: 11 } },
+            border: { display: false }
           }
         }
-        if (type === 'bar' && data.labels.length <= 2) {
+        if (data.labels && data.labels.length <= 2) {
           options.indexAxis = 'y'
           options.scales = {
-            x: {
-              beginAtZero: true
-            }
+            x: { beginAtZero: true, grid: { color: 'rgba(226,232,240,0.7)' }, border: { display: false }, ticks: { color: '#94a3b8', font: { size: 11 } } },
+            y: { grid: { display: false }, border: { display: false }, ticks: { color: '#64748b', font: { size: 11 } } }
           }
         }
+        data.datasets[0].borderRadius = 8
+        data.datasets[0].borderSkipped = false
       }
 
       if (type === 'line') {
-        data.datasets[0].fill = true
-        data.datasets[0].tension = 0.4
-        data.datasets[0].borderColor = data.datasets[0].backgroundColor[0]
-        data.datasets[0].backgroundColor = data.datasets[0].backgroundColor[0] + '40'
+        options.scales = {
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(226,232,240,0.7)', drawBorder: false },
+            ticks: { color: '#94a3b8', font: { size: 11 } },
+            border: { display: false }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: '#64748b', font: { size: 11 } },
+            border: { display: false }
+          }
+        }
+        data.datasets.forEach(ds => {
+          const baseColor = Array.isArray(ds.backgroundColor) ? ds.backgroundColor[0] : (ds.backgroundColor || '#6366f1')
+          ds.fill = true
+          ds.tension = 0.45
+          ds.borderColor = baseColor
+          ds.borderWidth = 2.5
+          ds.pointBackgroundColor = baseColor
+          ds.pointBorderColor = '#fff'
+          ds.pointBorderWidth = 2
+          ds.pointRadius = 5
+          ds.pointHoverRadius = 7
+          const grad = ctx.createLinearGradient(0, 0, 0, 260)
+          grad.addColorStop(0, baseColor + '50')
+          grad.addColorStop(1, baseColor + '00')
+          ds.backgroundColor = grad
+        })
       }
 
-      return new window.Chart(ctx, {
-        type: type,
-        data: data,
-        options: options
-      })
+      if (type === 'radar') {
+        options.plugins.legend.display = false
+        options.scales = {
+          r: {
+            beginAtZero: true,
+            min: 0,
+            max: 100,
+            grid: { color: 'rgba(226,232,240,0.9)' },
+            angleLines: { color: 'rgba(226,232,240,0.9)' },
+            ticks: { color: '#94a3b8', font: { size: 10 }, backdropColor: 'transparent', stepSize: 25 },
+            pointLabels: { color: '#64748b', font: { size: 11, weight: '500', family: "'Inter', sans-serif" } }
+          }
+        }
+        data.datasets[0].borderWidth = 2
+        data.datasets[0].borderColor = '#6366f1'
+        data.datasets[0].backgroundColor = 'rgba(99,102,241,0.15)'
+        data.datasets[0].pointBackgroundColor = '#6366f1'
+        data.datasets[0].pointBorderColor = '#fff'
+        data.datasets[0].pointBorderWidth = 2
+        data.datasets[0].pointRadius = 5
+        data.datasets[0].pointHoverRadius = 7
+      }
+
+      return new window.Chart(ctx, { type, data, options })
     }
 
     if (charts.quality) {
@@ -120,7 +200,7 @@ const Dashboard = ({ language = 'en' }) => {
       chartInstances.current.validation = createChart(chartRefs.validation, charts.validation)
     }
     if (charts.semantic) {
-      chartInstances.current.semantic = createChart(chartRefs.semantic, charts.semantic, 'bar')
+      chartInstances.current.semantic = createChart(chartRefs.semantic, charts.semantic, 'doughnut')
     }
     if (charts.criteria) {
       chartInstances.current.criteria = createChart(chartRefs.criteria, charts.criteria, 'radar')
@@ -261,53 +341,12 @@ const Dashboard = ({ language = 'en' }) => {
         </div>
       </motion.div>
 
-      <motion.div
-        className="guide-section"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-      >
-        <h3 className="section-title">{t('quickGuide', language)}</h3>
-        <div className="guide-grid">
-          <div className="guide-card">
-            <div className="guide-icon">📥</div>
-            <h4>{t('importSyllabus', language)}</h4>
-            <p>{t('importSyllabusDesc', language)}</p>
-          </div>
-          <div className="guide-card">
-            <div className="guide-icon">📊</div>
-            <h4>{t('importResults', language)}</h4>
-            <p>{t('importResultsDesc', language)}</p>
-          </div>
-          <div className="guide-card">
-            <div className="guide-icon">🔄</div>
-            <h4>{t('tableSorting', language)}</h4>
-            <p>{t('tableSortingDesc', language)}</p>
-          </div>
-          <div className="guide-card">
-            <div className="guide-icon">📈</div>
-            <h4>{t('qualityAnalysis', language)}</h4>
-            <p>{t('qualityAnalysisDesc', language)}</p>
-          </div>
-          <div className="guide-card">
-            <div className="guide-icon">🔗</div>
-            <h4>{t('correlationAnalysis', language)}</h4>
-            <p>{t('correlationAnalysisDesc', language)}</p>
-          </div>
-          <div className="guide-card">
-            <div className="guide-icon">👥</div>
-            <h4>{t('studentAnalysis', language)}</h4>
-            <p>{t('studentAnalysisDesc', language)}</p>
-          </div>
-        </div>
-      </motion.div>
-
       {charts && charts.success && (
         <motion.div
           className="charts-section"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: 0.4 }}
         >
           <h3 className="section-title">{t('analyticsData', language)}</h3>
           <div className="charts-grid">
@@ -369,6 +408,59 @@ const Dashboard = ({ language = 'en' }) => {
           </div>
         </motion.div>
       )}
+
+      <motion.div
+        className="guide-section"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+      >
+        <h3 className="section-title">{t('quickGuide', language)}</h3>
+        <div className="guide-grid">
+          <div className="guide-card">
+            <div className="guide-icon" style={{ background: 'linear-gradient(135deg, #3b82f6, #0ea5e9)', boxShadow: '0 8px 20px rgba(59,130,246,0.35)' }}>
+              <Database size={22} />
+            </div>
+            <h4>{t('importSyllabus', language)}</h4>
+            <p>{t('importSyllabusDesc', language)}</p>
+          </div>
+          <div className="guide-card">
+            <div className="guide-icon" style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', boxShadow: '0 8px 20px rgba(139,92,246,0.35)' }}>
+              <Cpu size={22} />
+            </div>
+            <h4>{t('importResults', language)}</h4>
+            <p>{t('importResultsDesc', language)}</p>
+          </div>
+          <div className="guide-card">
+            <div className="guide-icon" style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 8px 20px rgba(16,185,129,0.35)' }}>
+              <SlidersHorizontal size={22} />
+            </div>
+            <h4>{t('tableSorting', language)}</h4>
+            <p>{t('tableSortingDesc', language)}</p>
+          </div>
+          <div className="guide-card">
+            <div className="guide-icon" style={{ background: 'linear-gradient(135deg, #f59e0b, #ef4444)', boxShadow: '0 8px 20px rgba(245,158,11,0.35)' }}>
+              <Gauge size={22} />
+            </div>
+            <h4>{t('qualityAnalysis', language)}</h4>
+            <p>{t('qualityAnalysisDesc', language)}</p>
+          </div>
+          <div className="guide-card">
+            <div className="guide-icon" style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)', boxShadow: '0 8px 20px rgba(99,102,241,0.35)' }}>
+              <Network size={22} />
+            </div>
+            <h4>{t('correlationAnalysis', language)}</h4>
+            <p>{t('correlationAnalysisDesc', language)}</p>
+          </div>
+          <div className="guide-card">
+            <div className="guide-icon" style={{ background: 'linear-gradient(135deg, #06b6d4, #0ea5e9)', boxShadow: '0 8px 20px rgba(6,182,212,0.35)' }}>
+              <Scan size={22} />
+            </div>
+            <h4>{t('studentAnalysis', language)}</h4>
+            <p>{t('studentAnalysisDesc', language)}</p>
+          </div>
+        </div>
+      </motion.div>
     </div>
   )
 }

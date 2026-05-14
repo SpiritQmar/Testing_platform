@@ -12,7 +12,12 @@ import TopNav from './components/TopNav'
 import './App.css'
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('dashboard')
+  const validPages = ['dashboard', 'questions', 'import', 'settings', 'users', 'audit']
+  const [currentPage, setCurrentPage] = useState(() => {
+    const saved = localStorage.getItem('currentPage')
+    return validPages.includes(saved) ? saved : 'dashboard'
+  })
+  const [searchTarget, setSearchTarget] = useState(null)
   const [user, setUser] = useState(null)
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem('darkMode') === 'true'
@@ -20,12 +25,19 @@ function App() {
   const [language, setLanguage] = useState(() => {
     return localStorage.getItem('language') || 'en'
   })
+  const [sidebarMinimal, setSidebarMinimal] = useState(() => {
+    return localStorage.getItem('sidebarMinimal') === 'true'
+  })
 
   useEffect(() => {
     if (window.USER_DATA) {
       setUser(window.USER_DATA)
     }
   }, [])
+
+  useEffect(() => {
+    localStorage.setItem('currentPage', currentPage)
+  }, [currentPage])
 
   useEffect(() => {
     localStorage.setItem('darkMode', darkMode)
@@ -66,9 +78,9 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} user={user} language={language} />
-      <div className="main-content">
-        <TopNav user={user} onLogout={handleLogout} darkMode={darkMode} setDarkMode={setDarkMode} language={language} setLanguage={setLanguage} />
+      <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} user={user} language={language} isMinimal={sidebarMinimal} setIsMinimal={setSidebarMinimal} />
+      <div className="main-content" style={{ marginLeft: sidebarMinimal ? '72px' : '264px', transition: 'margin-left 0.3s cubic-bezier(0.4,0,0.2,1)' }}>
+        <TopNav user={user} onLogout={handleLogout} darkMode={darkMode} setDarkMode={setDarkMode} language={language} setLanguage={setLanguage} setCurrentPage={setCurrentPage} setSearchTarget={setSearchTarget} />
         <AnimatePresence mode="wait">
           <motion.div
             key={currentPage}
@@ -78,7 +90,7 @@ function App() {
             transition={{ duration: 0.3 }}
           >
             {currentPage === 'dashboard' && <Dashboard language={language} />}
-            {currentPage === 'questions' && <Questions language={language} />}
+            {currentPage === 'questions' && <Questions language={language} searchTarget={searchTarget} clearSearchTarget={() => setSearchTarget(null)} />}
             {currentPage === 'import' && <Import language={language} />}
             {currentPage === 'settings' && <Settings language={language} setLanguage={setLanguage} darkMode={darkMode} setDarkMode={setDarkMode} />}
             {currentPage === 'users' && <Users language={language} />}

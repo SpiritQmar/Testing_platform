@@ -106,14 +106,14 @@ const Users = ({ language = 'en' }) => {
             <Search size={20} />
             <input
               type="text"
-              placeholder="Search users by name, email, or role..."
+              placeholder={t('searchUsers', language)}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           <button className="btn-primary">
             <UserPlus size={18} />
-            Add User
+            {t('addUser', language)}
           </button>
         </div>
 
@@ -121,11 +121,11 @@ const Users = ({ language = 'en' }) => {
           <table className="users-table">
             <thead>
               <tr>
-                <th>User</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Last Login</th>
-                <th>Actions</th>
+                <th>{t('colUser', language)}</th>
+                <th>{t('colRole', language)}</th>
+                <th>{t('colStatus', language)}</th>
+                <th>{t('colLastLogin', language)}</th>
+                <th>{t('colActions', language)}</th>
               </tr>
             </thead>
             <tbody>
@@ -152,18 +152,18 @@ const Users = ({ language = 'en' }) => {
                   </td>
                   <td>
                     <span className={`status-badge ${user.is_active ? 'active' : 'inactive'}`}>
-                      {user.is_active ? 'Active' : 'Inactive'}
+                      {user.is_active ? t('statusActive', language) : t('statusInactive', language)}
                     </span>
                   </td>
                   <td className="last-login">
-                    {user.last_login || 'Never'}
+                    {user.last_login || t('neverLoggedIn', language)}
                   </td>
                   <td>
                     <div className="action-buttons">
-                      <button className="btn-icon" title="Edit">
+                      <button className="btn-icon" title={t('editUser', language)}>
                         <Edit size={16} />
                       </button>
-                      <button className="btn-icon danger" title="Delete">
+                      <button className="btn-icon danger" title={t('deleteUser', language)}>
                         <Trash2 size={16} />
                       </button>
                     </div>

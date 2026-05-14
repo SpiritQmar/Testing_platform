@@ -86,13 +86,12 @@ final class AIAnalyticsService
 
     public function getValidationOverview(): array
     {
-        if ($this->currentImportId === null) {
-            error_log('AIAnalyticsService: currentImportId is null');
-            return [];
-        }
-
+        if ($this->currentImportId === null) return [];
         try {
-            return $this->validationService->getValidationOverview($this->currentImportId, true);
+            $cached = $this->cacheService->getCachedValidation($this->currentImportId);
+            if (!empty($cached)) return $cached;
+            $this->cacheService->buildValidationCache($this->currentImportId);
+            return $this->cacheService->getCachedValidation($this->currentImportId);
         } catch (Throwable $e) {
             return [];
         }

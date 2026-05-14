@@ -5,7 +5,7 @@
 
 1. Запустить **XAMPP** → Apache + MySQL
 2. Положить папку в `C:/xampp/htdocs/UAMS`
-3. Открыть `http://localhost/diplom_project/UAMS/`
+3. Открыть `http://localhost/UAMS/`
 
 Для семантического анализа дополнительно:
 ```bash

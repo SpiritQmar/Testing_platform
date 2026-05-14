@@ -10,15 +10,60 @@
   left: 0;
   top: 0;
   z-index: 10;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: visible;
+}
+
+.sidebar.minimal {
+  width: 72px;
 }
 
 .sidebar-brand {
-  height: 105px;
+  height: 88px;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 26px 28px;
+  padding: 0 28px;
   border-bottom: 1px solid #e5e7eb;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.sidebar.minimal .sidebar-brand {
+  justify-content: center;
+  padding: 0;
+  gap: 0;
+}
+
+.sidebar.minimal .brand-name,
+.sidebar.minimal .brand-subtitle {
+  display: none;
+}
+
+.sidebar-toggle-btn {
+  position: absolute;
+  top: 50%;
+  right: -12px;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: white;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 11;
+  transition: background 0.2s, box-shadow 0.2s;
+  color: #667eea;
+  padding: 0;
+}
+
+.sidebar-toggle-btn:hover {
+  background: #f0edff;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
 }
 
 .brand-logo {
@@ -58,6 +103,12 @@
   flex-direction: column;
   gap: 8px;
   flex: 1;
+  overflow: hidden;
+}
+
+.sidebar.minimal .sidebar-nav {
+  padding: 22px 8px;
+  align-items: center;
 }
 
 .nav-item {
@@ -74,6 +125,19 @@
   border: none;
   cursor: pointer;
   transition: all 0.3s ease;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.sidebar.minimal .nav-item {
+  width: 48px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+
+.sidebar.minimal .nav-item span {
+  display: none;
 }
 
 .nav-item:hover {
@@ -199,4 +263,14 @@
   font-size: 12px;
   color: #64748b;
   margin-top: 3px;
+}
+
+.sidebar.minimal .sidebar-user {
+  justify-content: center;
+  padding: 12px 0;
+}
+
+.sidebar.minimal .user-info,
+.sidebar.minimal .user-menu-icon {
+  display: none;
 }

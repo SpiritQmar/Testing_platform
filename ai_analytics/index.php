@@ -108,7 +108,7 @@ $ai->setMinStudentsForDiscrimination($minStudentsDiscrimination);
 $embeddingsService = new EmbeddingsService();
 $tfidf = new TfIdfService($pdo, $embeddingsService, $importId);
 $rules = new RuleClassifierService($pdo);
-$router = new AnalyticsServiceRouter ($pdo);
+$router = new AnalyticsServiceRouter($pdo);
 $questionImportFlash = $_SESSION['question_text_import_flash'] ?? null;
 unset($_SESSION['question_text_import_flash']);
 
@@ -161,6 +161,68 @@ $sections = [
 
 render_header(t('title'));
 ?>
+
+<!-- PAGE LOADER -->
+<div id="ai-page-loader">
+  <div id="ai-loader-bar-track"><div id="ai-loader-bar"></div></div>
+  <div id="ai-loader-body">
+    <div class="ai-loader-icon"><i class="bi bi-cpu"></i></div>
+    <div class="ai-loader-title">AI Аналитика</div>
+    <div class="ai-loader-sub">Загрузка данных анализа...</div>
+    <div class="ai-loader-progress-wrap">
+      <div class="ai-loader-progress-bar" id="ai-loader-progress-fill"></div>
+    </div>
+    <div class="ai-loader-pct" id="ai-loader-pct">0%</div>
+  </div>
+</div>
+<style>
+#ai-page-loader{position:fixed;inset:0;z-index:99999;background:var(--bg-secondary,#f8fafc);display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .4s ease,visibility .4s ease}
+#ai-page-loader.done{opacity:0;visibility:hidden;pointer-events:none}
+#ai-loader-bar-track{position:absolute;top:0;left:0;right:0;height:3px;background:rgba(99,102,241,.15)}
+#ai-loader-bar{height:100%;width:0%;background:linear-gradient(90deg,#6366f1,#a855f7);border-radius:0 3px 3px 0;transition:width .3s ease;box-shadow:0 0 8px rgba(99,102,241,.5)}
+#ai-loader-body{display:flex;flex-direction:column;align-items:center;gap:12px}
+.ai-loader-icon{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;box-shadow:0 8px 24px rgba(79,70,229,.35);animation:loaderPulse 1.8s ease-in-out infinite}
+@keyframes loaderPulse{0%,100%{transform:scale(1);box-shadow:0 8px 24px rgba(79,70,229,.35)}50%{transform:scale(1.07);box-shadow:0 12px 32px rgba(79,70,229,.5)}}
+.ai-loader-title{font-size:22px;font-weight:800;color:var(--text-primary,#1e293b);letter-spacing:-.02em;margin-top:4px}
+.ai-loader-sub{font-size:13px;color:var(--text-muted,#64748b);font-weight:500}
+.ai-loader-progress-wrap{width:240px;height:6px;background:var(--border-color,#e2e8f0);border-radius:999px;overflow:hidden;margin-top:8px}
+.ai-loader-progress-bar{height:100%;width:0%;background:linear-gradient(90deg,#6366f1,#a855f7);border-radius:999px;transition:width .25s ease}
+.ai-loader-pct{font-size:12px;font-weight:600;color:var(--text-muted,#64748b);font-variant-numeric:tabular-nums}
+</style>
+<script>
+(function(){
+  var bar = document.getElementById('ai-loader-bar');
+  var fill = document.getElementById('ai-loader-progress-fill');
+  var pct  = document.getElementById('ai-loader-pct');
+  var loader = document.getElementById('ai-page-loader');
+  var current = 0;
+
+  function setProgress(val) {
+    current = Math.min(val, 100);
+    if (bar)  bar.style.width  = current + '%';
+    if (fill) fill.style.width = current + '%';
+    if (pct)  pct.textContent  = Math.round(current) + '%';
+  }
+
+  var steps = [
+    {to: 20, delay: 80},
+    {to: 40, delay: 200},
+    {to: 58, delay: 400},
+    {to: 72, delay: 700},
+    {to: 85, delay: 1100}
+  ];
+  steps.forEach(function(s){
+    setTimeout(function(){ setProgress(s.to); }, s.delay);
+  });
+
+  document.addEventListener('DOMContentLoaded', function(){
+    setProgress(100);
+    setTimeout(function(){
+      if (loader) loader.classList.add('done');
+    }, 350);
+  });
+})();
+</script>
 
 <script>
 function showChart(chartType) {
@@ -357,7 +419,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function setupImportFormLogging() {
-  // Проверяем что DOM загружен перед поиском форм
   if (document.readyState === 'loading') {
     return;
   }
@@ -416,14 +477,15 @@ function refreshSyllabusTopics() {
 
 <style>
 .ai-container { max-width: 1400px; margin: 0 auto; padding: 0 20px; }
-.ai-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; border-radius: 12px; margin-bottom: 40px; }
-.ai-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; color: white; }
-.ai-header p { font-size: 16px; opacity: 0.9; color: white; }
-.ai-nav { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 40px; justify-content: center; }
-.ai-nav-btn { flex: 1; min-width: 100px; padding: 12px 16px; border: 2px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); font-weight: 500; font-size: 13px; text-decoration: none; color: var(--text-primary); display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.3; }
-.ai-nav-btn:hover { background: var(--bg-tertiary); transform: translateY(-2px); border-color: var(--accent-primary); box-shadow: var(--shadow-md); text-decoration: none; color: var(--text-primary); }
-.ai-nav-btn:active { transform: translateY(0); }
-.ai-nav-btn.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: transparent; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3); text-decoration: none; }
+.ai-header { background: var(--bg-primary); padding: 32px 36px; border-radius: 16px; margin-bottom: 0; border: 1px solid var(--border-color); box-shadow: 0 2px 12px rgba(0,0,0,0.06); position: relative; overflow: hidden; }
+.ai-header::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #4f46e5, #7c3aed, #a855f7); }
+.ai-header h1, .ai-header .h2 { font-size: 24px; font-weight: 800; margin-bottom: 6px; color: var(--text-primary); letter-spacing: -0.02em; }
+.ai-header p { font-size: 14px; color: var(--text-muted); line-height: 1.6; margin-bottom: 0; }
+.ai-nav { display: flex; gap: 6px; flex-wrap: wrap; margin: 16px 0 20px 0; justify-content: flex-start; background: transparent; padding: 0; border-radius: 0; border: none; }
+.ai-nav-btn { padding: 8px 16px; border: 1.5px solid var(--border-color); border-radius: 9px; background: transparent; cursor: pointer; transition: all 0.15s ease; font-weight: 600; font-size: 13px; text-decoration: none; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.ai-nav-btn:hover { background: var(--bg-secondary); color: var(--text-primary); border-color: #a5b4fc; text-decoration: none; }
+.ai-nav-btn:active { transform: none; }
+.ai-nav-btn.active { background: rgba(99,102,241,0.08); color: #4338ca; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); text-decoration: none; }
 .ai-section { display: none; }
 .ai-section.active { display: block; }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; margin-bottom: 40px; }
@@ -435,11 +497,49 @@ function refreshSyllabusTopics() {
 .table-container table { background: var(--bg-primary) !important; }
 .table-container table thead { background: var(--bg-secondary) !important; }
 .table-container table tbody { background: var(--bg-primary) !important; }
-.badge-soft { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; }
-.badge-soft.success { background: rgba(16, 185, 129, 0.15); color: var(--accent-success); }
-.badge-soft.warning { background: rgba(245, 158, 11, 0.15); color: var(--accent-warning); }
-.badge-soft.danger { background: rgba(239, 68, 68, 0.15); color: var(--accent-danger); }
-.badge-soft.info { background: rgba(37, 99, 235, 0.15); color: var(--accent-primary); }
+.badge-soft {
+  padding: 4px 10px 4px 7px !important;
+  border-radius: 20px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  letter-spacing: 0.02em !important;
+  line-height: 1.5 !important;
+  vertical-align: middle !important;
+  white-space: nowrap !important;
+}
+.badge-soft::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.badge-soft.success {
+  background: rgba(16, 185, 129, 0.13) !important;
+  color: #047857 !important;
+  box-shadow: inset 0 0 0 1.5px rgba(16,185,129,0.35) !important;
+}
+.badge-soft.warning {
+  background: rgba(245, 158, 11, 0.13) !important;
+  color: #92400e !important;
+  box-shadow: inset 0 0 0 1.5px rgba(245,158,11,0.38) !important;
+}
+.badge-soft.danger {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: #b91c1c !important;
+  box-shadow: inset 0 0 0 1.5px rgba(239,68,68,0.32) !important;
+}
+.badge-soft.info {
+  background: rgba(99, 102, 241, 0.13) !important;
+  color: #3730a3 !important;
+  box-shadow: inset 0 0 0 1.5px rgba(99,102,241,0.32) !important;
+}
 
 .quick-guide-card { animation: fadeInUp 0.6s ease-out; }
 @keyframes fadeInUp {
@@ -498,8 +598,8 @@ table thead th a { font-size: 16px !important; color: var(--text-primary); curso
 table thead th a:hover { color: #667eea; }
 table tbody td { border-bottom: 1px solid var(--border-color); border-right: 1px solid var(--border-color); padding: 16px 14px; font-size: 16px; color: var(--text-secondary); background: var(--bg-primary) !important; }
 table tbody td:last-child { border-right: none; }
-table tbody tr { background: var(--bg-primary) !important; }
-table tbody tr:hover { background: var(--bg-secondary) !important; }
+table tbody tr:not(.ai-row-success):not(.ai-row-warning):not(.ai-row-danger) { background: var(--bg-primary) !important; }
+table tbody tr:hover:not(.ai-row-success):not(.ai-row-warning):not(.ai-row-danger) { background: var(--bg-secondary) !important; }
 table tbody tr:last-child td { border-bottom: none; }
 .sort-icon { font-size: 18px; margin-left: 6px; opacity: 0.6; }
 .sort-icon.active { opacity: 1; color: #667eea; }
@@ -529,18 +629,92 @@ table tbody tr:last-child td { border-bottom: none; }
 .alert-success { background: rgba(16, 185, 129, 0.1); border-color: #10b981; color: #059669; }
 .alert-danger { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #dc2626; }
 .alert-warning { background: rgba(245, 158, 11, 0.1); border-color: #f59e0b; color: #d97706; }
+
+/* ── AI service widget ── */
+#ai-svc-btn:hover { background: rgba(99,102,241,.17) !important; }
+#ai-svc-reload-btn:hover { background: rgba(16,185,129,.17) !important; }
+
+/* ── Row flag tinting — must be here to beat table tbody td !important above ── */
+table tbody tr.ai-row-success td { background: rgba(16,185,129,0.07) !important; border-bottom-color: rgba(16,185,129,0.13) !important; }
+table tbody tr.ai-row-warning td { background: rgba(245,158,11,0.07) !important;  border-bottom-color: rgba(245,158,11,0.15) !important; }
+table tbody tr.ai-row-danger  td { background: rgba(239,68,68,0.06) !important;   border-bottom-color: rgba(239,68,68,0.13) !important; }
+table tbody tr.ai-row-success:hover td { background: rgba(16,185,129,0.13) !important; }
+table tbody tr.ai-row-warning:hover td { background: rgba(245,158,11,0.12) !important; }
+table tbody tr.ai-row-danger:hover  td { background: rgba(239,68,68,0.11) !important; }
+
+/* ── Filter bar pills ── */
+.ai-table-filter-bar { display:flex; align-items:center; gap:6px; margin-bottom:12px; flex-wrap:wrap; padding: 0 2px; }
+.ai-filter-label { font-size:10.5px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:.07em; display:flex; align-items:center; gap:4px; margin-right:2px; white-space:nowrap; }
+.ai-filter-pill { display:inline-flex !important; align-items:center; gap:4px; padding:5px 13px; border-radius:20px; font-size:11px; font-weight:600; border:1.5px solid #d1d5db; cursor:pointer !important; background:#f9fafb; color:#6b7280; user-select:none; white-space:nowrap; line-height:1.4; transition:all .14s; }
+.ai-filter-pill:hover { border-color:#6366f1; color:#4f46e5; background:rgba(99,102,241,.06); }
+.ai-filter-pill.active { background:rgba(99,102,241,.1); color:#4338ca; border-color:#6366f1; box-shadow:0 0 0 2.5px rgba(99,102,241,.14); }
+.ai-filter-pill[data-filter="success"].active { background:rgba(16,185,129,.11); color:#047857; border-color:rgba(16,185,129,.55); box-shadow:0 0 0 2.5px rgba(16,185,129,.14); }
+.ai-filter-pill[data-filter="warning"].active { background:rgba(245,158,11,.11); color:#92400e; border-color:rgba(245,158,11,.55); box-shadow:0 0 0 2.5px rgba(245,158,11,.14); }
+.ai-filter-pill[data-filter="danger"].active  { background:rgba(239,68,68,.10);  color:#b91c1c; border-color:rgba(239,68,68,.5);  box-shadow:0 0 0 2.5px rgba(239,68,68,.11); }
+.ai-filtered-hidden { display:none !important; }
 </style>
+
+<?php
+  $sectionIcons = [
+    'validation'   => 'bi-shield-check',
+    'quality'      => 'bi-star',
+    'correlation'  => 'bi-diagram-3',
+    'students'     => 'bi-people',
+    'semantic'     => 'bi-cpu',
+    'criteria'     => 'bi-list-check',
+    'answers'      => 'bi-chat-left-text',
+    'syllabus-link'=> 'bi-link-45deg',
+  ];
+  ?>
 
 <div class="ai-container">
   <div class="ai-header">
     <div class="ai-header-content">
       <div>
-        <h1 class="h2 mb-2"><?= t('title') ?></h1>
-        <p class="mb-0 opacity-75"><?= t('subtitle') ?></p>
+        <h1 class="h2 mb-1"><?= t('title') ?></h1>
+        <p class="mb-0"><?= t('subtitle') ?></p>
       </div>
     </div>
   </div>
-  
+
+  <div class="ai-search-wrapper" style="position:relative;margin:12px 0 18px 0;max-width:720px">
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.04)">
+      <i class="bi bi-search" style="color:#6b7280;font-size:15px"></i>
+      <input id="ai-search-input" type="text" placeholder="AI поиск: вопрос, тема, студент, ID, текст..." style="flex:1;border:none;outline:none;font-size:14px;background:transparent">
+      <span id="ai-search-mode" style="font-size:11px;color:#a855f7;display:none">⚡ AI</span>
+      <kbd style="font-size:10px;padding:2px 6px;background:#f3f4f6;border-radius:4px;color:#6b7280">Ctrl K</kbd>
+    </div>
+    <div id="ai-search-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.12);max-height:480px;overflow-y:auto;z-index:1000;border:1px solid #e5e7eb"></div>
+  </div>
+
+  <div class="ai-nav">
+    <?php foreach ($sections as $key => $label):
+      $icon = $sectionIcons[$key] ?? 'bi-circle';
+      $isActive = $section === $key;
+    ?>
+      <a href="?section=<?= $key ?>" class="ai-nav-btn <?= $isActive ? 'active' : '' ?>">
+        <i class="bi <?= $icon ?>"></i>
+        <span><?= $label ?></span>
+      </a>
+    <?php endforeach; ?>
+  </div>
+
+  <!-- AI Service Status Widget -->
+  <div id="ai-svc-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 16px;border-radius:10px;border:1.5px solid var(--border-color);background:var(--bg-primary);font-size:13px;">
+    <span id="ai-svc-dot" style="width:9px;height:9px;border-radius:50%;background:#d1d5db;flex-shrink:0;transition:background .3s;"></span>
+    <span id="ai-svc-label" style="color:var(--text-secondary);font-weight:600;">Проверка сервиса эмбеддингов...</span>
+    <button id="ai-svc-btn" onclick="aiSvcStart()" style="display:none;margin-left:auto;padding:5px 14px;border-radius:7px;border:1.5px solid #6366f1;background:rgba(99,102,241,.09);color:#4338ca;font-size:12px;font-weight:700;cursor:pointer;">
+      <i class="bi bi-play-fill"></i> Запустить сервис
+    </button>
+    <span id="ai-svc-spinner" style="display:none;margin-left:auto;"><span class="spinner-border spinner-border-sm text-primary" role="status"></span> <span style="color:var(--text-secondary);font-size:12px;">Запуск...</span></span>
+    <button id="ai-svc-reload-btn" onclick="aiSvcReloadTables()" style="display:none;margin-left:8px;padding:5px 14px;border-radius:7px;border:1.5px solid #10b981;background:rgba(16,185,129,.09);color:#047857;font-size:12px;font-weight:700;cursor:pointer;">
+      <i class="bi bi-arrow-clockwise"></i> Обновить данные
+    </button>
+    <button id="ai-svc-stop-btn" onclick="aiSvcStop()" style="display:none;margin-left:8px;padding:5px 14px;border-radius:7px;border:1.5px solid #ef4444;background:rgba(239,68,68,.09);color:#b91c1c;font-size:12px;font-weight:700;cursor:pointer;">
+      <i class="bi bi-stop-fill"></i> Отключить
+    </button>
+  </div>
+
   <?php if ($importId === null && !empty($imports)): ?>
     <div class="alert alert-warning mb-4">
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -557,13 +731,9 @@ table tbody tr:last-child td { border-bottom: none; }
       </form>
     </div>
   <?php endif; ?>
-  
-  <div class="ai-nav">
-    <?php foreach ($sections as $key => $label): ?>
-      <a href="?section=<?= $key ?>" class="ai-nav-btn <?= $section === $key ? 'active' : '' ?>"><?= $label ?></a>
-    <?php endforeach; ?>
-  </div>
-  
+
+  <?php /* nav rendered inside header above */ ?>
+
   <div id="section-overview" class="ai-section <?= $section === 'overview' ? 'active' : '' ?>">
     <div class="stats-grid">
       <?php
@@ -585,15 +755,15 @@ table tbody tr:last-child td { border-bottom: none; }
               $stats = $stmt->fetch(PDO::FETCH_ASSOC);
               
               $stmt = $pdo->prepare("
-                  SELECT 
+                  SELECT
                       COUNT(DISTINCT question_id) as questions,
                       COUNT(DISTINCT student_id) as students,
                       COUNT(*) as attempts,
                       AVG(score_after_appeal) as avg_score
-                  FROM raw_exam_results 
+                  FROM raw_exam_results
                   WHERE import_id != ? AND import_id IN (
-                      SELECT id FROM imports WHERE created_at < (
-                          SELECT created_at FROM imports WHERE id = ?
+                      SELECT import_id FROM imports_log WHERE created_at < (
+                          SELECT created_at FROM imports_log WHERE import_id = ?
                       ) ORDER BY created_at DESC LIMIT 1
                   )
               ");
@@ -947,7 +1117,21 @@ table tbody tr:last-child td { border-bottom: none; }
                     $savedQuestions = 0;
                     
                     $pdo->commit();
-                    
+
+                    if ($savedTopics > 0) {
+                        try {
+                            require_once __DIR__ . '/services/SearchService.php';
+                            $svcSearch = new SearchService($pdo);
+                            if ($svcSearch->getIndexSize() > 0) {
+                                @ignore_user_abort(true);
+                                $svcSearch->rebuildIndex(false);
+                                error_log('Search index incremental update after syllabus upload');
+                            }
+                        } catch (Throwable $e) {
+                            error_log('Auto search-index failed: ' . $e->getMessage());
+                        }
+                    }
+
                     $importSuccess = "Syllabus uploaded! Topics saved: {$savedTopics}, Questions saved: {$savedQuestions}";
                     $importStats = [
                         'type' => 'syllabus',
@@ -1806,23 +1990,12 @@ table tbody tr:last-child td { border-bottom: none; }
       $healthAlerts = $systemHealth->getHealthAlerts();
       
       if (!empty($healthAlerts)): ?>
-        <div class="alert alert-warning mb-4" role="alert">
-          <h5 class="alert-heading">
-            <i class="bi bi-exclamation-triangle-fill"></i> 
-            <?= $healthAlerts[0]['title'] ?>
-          </h5>
-          <p class="mb-2"><?= $healthAlerts[0]['message'] ?></p>
-          <hr>
-          <p class="mb-0">
-            <small>
-              <strong>Что делать:</strong><br>
-              1. Откройте командную строку<br>
-              2. Перейдите в папку: <code>cd C:\xampp\htdocs\uams\backend\analytics\python_services</code><br>
-              3. Установите зависимости: <code>pip install -r requirements.txt</code><br>
-              4. Запустите сервис: <code>python embeddings_api.py</code><br>
-              5. Проверьте: <code>curl http://localhost:8000/health</code>
-            </small>
-          </p>
+        <div class="alert alert-warning mb-4 d-flex align-items-center gap-3" role="alert">
+          <i class="bi bi-cpu fs-4 flex-shrink-0"></i>
+          <div>
+            <strong><?= $healthAlerts[0]['title'] ?></strong> — <?= $healthAlerts[0]['message'] ?><br>
+            <span class="text-muted small">Нажмите кнопку <strong>«Запустить сервис»</strong> в панели выше.</span>
+          </div>
         </div>
       <?php endif; ?>
       <?php if ($importId !== null): ?>
@@ -1834,56 +2007,23 @@ table tbody tr:last-child td { border-bottom: none; }
         <?php
         $page = isset($_GET['validation_page']) ? max(1, (int)$_GET['validation_page']) : 1;
         $perPage = PER_PAGE;
-
         $sortColumn = $_GET['validation_sort'] ?? null;
         $sortDirection = $_GET['validation_dir'] ?? null;
 
-        
-        require_once __DIR__ . '/services/ValidationService.php';
-        require_once __DIR__ . '/services/EmbeddingsService.php';
-        require_once __DIR__ . '/services/TfIdfService.php';
-        
-        $embeddingsService = new EmbeddingsService();
-        $tfIdfService = new TfIdfService($pdo, $embeddingsService, $importId);
-        $validationService = new ValidationService($pdo, $embeddingsService, $tfIdfService);
-        
-        $validationResults = $validationService->getValidationOverview((int)$importId, true);
-        
-        
+        $validationResults = $ai->getValidationOverview();
+
         $validationData = [];
-        $validationErrors = [];
-        
-        $validationResultsType = gettype($validationResults);
-        $validationResultsCount = is_array($validationResults) ? count($validationResults) : 'not array';
-        error_log("Before loop: validationResults type=$validationResultsType, count=$validationResultsCount");
-        
-        if (!empty($validationResults) && is_array($validationResults)) {
-            $iterationCount = 0;
-            foreach ($validationResults as $v):
-                try {
-                    $iterationCount++;
-                    error_log("Validation loop iteration $iterationCount, question_id=" . ($v['question_id'] ?? 'missing'));
-                    $statusClass = ($v['status'] ?? '') === 'ok' ? 'success' : 'warning';
-                    $issues = is_array($v['issues'] ?? null) ? $v['issues'] : [];
-                    $validationData[] = [
-                        'question_id' => (int)($v['question_id'] ?? 0),
-                        'syllabus_title' => $v['syllabus_title'] ?? '—',
-                        'avg_score' => $v['avg_score'] ?? 0,
-                        'attempts' => $v['attempts'] ?? 0,
-                        'status_class' => $statusClass,
-                        'status' => $v['status'] ?? 'ok',
-                        'issues' => implode(', ', $issues)
-                    ];
-                    error_log("Validation loop iteration $iterationCount SUCCESS");
-                } catch (Throwable $e) {
-                    $validationErrors[] = "Iteration $iterationCount error: " . $e->getMessage();
-                    error_log("Validation loop iteration $iterationCount ERROR: " . $e->getMessage());
-                }
-            endforeach;
-        }
-        
-        if (!empty($validationErrors)) {
-            echo "<script>console.error('index.php: validation errors:', " . json_encode($validationErrors) . ");</script>";
+        foreach ($validationResults as $v) {
+            $issues = is_array($v['issues'] ?? null) ? $v['issues'] : [];
+            $validationData[] = [
+                'question_id'   => (int)($v['question_id'] ?? 0),
+                'syllabus_title'=> $v['syllabus_title'] ?? '—',
+                'avg_score'     => round((float)($v['avg_score'] ?? 0), 2),
+                'attempts'      => (int)($v['attempts'] ?? 0),
+                'status_class'  => ($v['status'] ?? '') === 'ok' ? 'success' : 'warning',
+                'status'        => $v['status'] ?? 'ok',
+                'issues'        => implode(', ', $issues),
+            ];
         }
 
         if ($sortColumn && $sortDirection) {
@@ -1920,7 +2060,7 @@ table tbody tr:last-child td { border-bottom: none; }
               else:
                 foreach ($pagedData as $row):
               ?>
-                <tr>
+                <tr class="ai-row-<?= $row['status_class'] ?>">
                   <td><strong><?= $row['question_id'] ?></strong></td>
                   <td><?= h($row['syllabus_title']) ?></td>
                   <td><?= $row['avg_score'] ?></td>
@@ -2090,7 +2230,7 @@ table tbody tr:last-child td { border-bottom: none; }
                 foreach ($pagedData as $row):
                   $discData = $dmap[$row['question_id']] ?? null;
               ?>
-                <tr>
+                <tr class="ai-row-<?= $row['flag_class'] ?>">
                   <td><strong><?= $row['question_id'] ?></strong></td>
                   <td><?= h($row['discipline']) ?></td>
                   <td><?= $row['n'] ?></td>
@@ -2135,11 +2275,12 @@ table tbody tr:last-child td { border-bottom: none; }
         if (!empty($corr)) {
             foreach ($corr as $c):
                 $flagClass = $c['flag'] === 'ok' ? 'success' : 'warning';
+                $flagLabel = $c['flag'] === 'ok' ? 'Хорошая' : 'Слабая';
                 $correlationData[] = [
                     'question_id' => $c['question_id'],
                     'r' => $c['r'],
                     'flag_class' => $flagClass,
-                    'flag' => $c['flag']
+                    'flag' => $flagLabel
                 ];
             endforeach;
         }
@@ -2172,7 +2313,7 @@ table tbody tr:last-child td { border-bottom: none; }
               else:
                 foreach ($pagedData as $row):
               ?>
-                <tr>
+                <tr class="ai-row-<?= $row['flag_class'] ?>">
                   <td><strong><?= $row['question_id'] ?></strong></td>
                   <td><?= $row['r'] ?></td>
                   <td><span class="badge badge-soft <?= $row['flag_class'] ?>"><?= $row['flag'] ?></span></td>
@@ -2214,13 +2355,14 @@ table tbody tr:last-child td { border-bottom: none; }
         if (!empty($patterns)) {
             foreach ($patterns as $p):
                 $typeClass = $p['pattern_type'] === 'ok' ? 'success' : ($p['pattern_type'] === 'systemic' ? 'danger' : 'warning');
+                $ptLabels  = ['ok' => 'Норма', 'systemic' => 'Системный риск', 'spot' => 'Локальный провал'];
                 $studentsData[] = [
                     'student_id' => $p['student_id'],
                     'avg_item' => $p['avg_item'],
                     'min_item' => $p['min_item'],
                     'discipline_total' => $p['discipline_total'],
                     'type_class' => $typeClass,
-                    'pattern_type' => $p['pattern_type'],
+                    'pattern_type' => $ptLabels[$p['pattern_type']] ?? $p['pattern_type'],
                     'notes' => implode(', ', $p['notes'])
                 ];
             endforeach;
@@ -2241,7 +2383,7 @@ table tbody tr:last-child td { border-bottom: none; }
               else:
                 foreach ($studentsData as $row):
               ?>
-                <tr>
+                <tr class="ai-row-<?= $row['type_class'] ?>">
                   <td><strong><?= $row['student_id'] ?></strong></td>
                   <td><?= $row['avg_item'] ?></td>
                   <td><?= $row['min_item'] ?></td>
@@ -2327,7 +2469,7 @@ table tbody tr:last-child td { border-bottom: none; }
               else:
                 foreach ($pagedData as $row):
               ?>
-                <tr>
+                <tr class="ai-row-<?= $row['status_class'] ?>">
                   <td><strong><?= $row['question_id'] ?></strong></td>
                   <td><?= h($row['syllabus_title']) ?></td>
                   <td><?= h($row['discipline_name']) ?></td>
@@ -2435,96 +2577,164 @@ table tbody tr:last-child td { border-bottom: none; }
   <div id="section-settings" class="ai-section <?= $section === 'settings' ? 'active' : '' ?>">
     <div class="table-container">
       <h3 class="h5 mb-3"><?= t('settings_coefficients') ?></h3>
-      
-      <div class="form-grid">
-        <div class="form-card">
-          <h6 class="fw-semibold mb-3"><?= t('global_settings') ?></h6>
-          <form method="post" class="mb-3">
-            <?= csrf_input() ?>
+      <?php
+      $cfg = $config['coefficients'] ?? [];
+      $cfgQuality = $cfg['quality'] ?? [];
+      $cfgDiscr   = $cfg['discrimination'] ?? [];
+      $cfgSimilar = $cfg['similarity'] ?? [];
+      $cfgRisk    = $cfg['risk'] ?? [];
+      $cfgWeights = $cfg['weights'] ?? [];
+      ?>
+      <div id="settings-msg"></div>
+      <form id="settingsForm" class="mb-3">
+        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+        <div class="form-grid">
+
+          <div class="form-card">
+            <h6 class="fw-semibold mb-3"><?= t('global_settings') ?></h6>
+
             <div class="mb-3">
-              <label class="form-label"><?= t('difficulty_threshold') ?></label>
-              <input type="number" step="0.01" min="0" max="1" name="difficulty_threshold" class="form-control" value="0.5">
-              <small class="text-muted"><?= t('difficulty_threshold_desc') ?></small>
+              <label class="form-label"><?= t('difficulty_threshold') ?> (easy)</label>
+              <input type="number" step="0.01" min="0" max="1"
+                     name="coefficients[quality][easy_threshold]"
+                     class="form-control"
+                     value="<?= htmlspecialchars($cfgQuality['easy_threshold'] ?? 0.8) ?>">
+              <small class="text-muted">Доля правильных ответов выше которой вопрос считается лёгким</small>
             </div>
+
+            <div class="mb-3">
+              <label class="form-label"><?= t('difficulty_threshold') ?> (hard)</label>
+              <input type="number" step="0.01" min="0" max="1"
+                     name="coefficients[quality][hard_threshold]"
+                     class="form-control"
+                     value="<?= htmlspecialchars($cfgQuality['hard_threshold'] ?? 0.3) ?>">
+              <small class="text-muted">Доля правильных ответов ниже которой вопрос считается сложным</small>
+            </div>
+
             <div class="mb-3">
               <label class="form-label"><?= t('discrimination_threshold') ?></label>
-              <input type="number" step="0.01" min="0" max="1" name="discrimination_threshold" class="form-control" value="0.3">
+              <input type="number" step="0.01" min="0" max="1"
+                     name="coefficients[quality][discrimination_strong]"
+                     class="form-control"
+                     value="<?= htmlspecialchars($cfgQuality['discrimination_strong'] ?? 0.4) ?>">
               <small class="text-muted"><?= t('discrimination_threshold_desc') ?></small>
             </div>
-            <div class="mb-3">
-              <label class="form-label"><?= t('min_attempts') ?></label>
-              <input type="number" min="1" name="min_attempts" class="form-control" value="5">
-              <small class="text-muted"><?= t('min_attempts_desc') ?></small>
-            </div>
+
             <div class="mb-3">
               <label class="form-label"><?= t('min_students_discrimination') ?></label>
-              <input type="number" min="2" name="min_students_discrimination" class="form-control" value="<?= $minStudentsDiscrimination ?>">
+              <input type="number" min="2"
+                     name="coefficients[discrimination][min_students]"
+                     class="form-control"
+                     value="<?= htmlspecialchars($cfgDiscr['min_students'] ?? $minStudentsDiscrimination) ?>">
               <small class="text-muted"><?= t('min_students_discrimination_desc') ?></small>
             </div>
+
             <div class="mb-3">
               <label class="form-label"><?= t('dedup_threshold') ?></label>
-              <input type="number" step="0.01" min="0" max="1" name="dedup_threshold" class="form-control" value="<?= DEFAULT_DEDUP_THRESHOLD ?>">
+              <input type="number" step="0.01" min="0" max="1"
+                     name="coefficients[similarity][duplicate_threshold]"
+                     class="form-control"
+                     value="<?= htmlspecialchars($cfgSimilar['duplicate_threshold'] ?? 0.85) ?>">
               <small class="text-muted"><?= t('dedup_threshold_desc') ?></small>
             </div>
+          </div>
+
+          <div class="form-card">
+            <h6 class="fw-semibold mb-3">Риск-анализ и веса</h6>
+
             <div class="mb-3">
-              <label class="form-label"><?= t('tfidf_weight') ?></label>
-              <input type="number" step="0.01" min="0" max="1" name="tfidf_weight" class="form-control" value="<?= DEFAULT_TFIDF_WEIGHT ?>">
-              <small class="text-muted"><?= t('tfidf_weight_desc') ?></small>
+              <label class="form-label">Системный риск — порог среднего балла</label>
+              <input type="number" step="0.1" min="0" max="100"
+                     name="coefficients[risk][systemic_avg]"
+                     class="form-control"
+                     value="<?= htmlspecialchars($cfgRisk['systemic_avg'] ?? 50) ?>">
+              <small class="text-muted">Средний балл ниже которого студент попадает в системный риск</small>
             </div>
-            <button type="submit" class="btn btn-primary"><?= t('save_settings') ?></button>
-          </form>
+
+            <div class="mb-3">
+              <label class="form-label">Локальный провал — мин. балл</label>
+              <input type="number" step="0.1" min="0" max="100"
+                     name="coefficients[risk][spot_min]"
+                     class="form-control"
+                     value="<?= htmlspecialchars($cfgRisk['spot_min'] ?? 20) ?>">
+              <small class="text-muted">Минимальный балл по любому предмету для локального провала</small>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Вес балла в итоговой оценке</label>
+              <input type="number" step="0.01" min="0" max="1"
+                     name="coefficients[weights][score_weight]"
+                     class="form-control"
+                     value="<?= htmlspecialchars($cfgWeights['score_weight'] ?? 0.5) ?>">
+              <small class="text-muted">0–1, остаток — вес дискриминации</small>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Штраф за лёгкость/сложность</label>
+              <input type="number" step="0.01" min="0" max="1"
+                     name="coefficients[weights][penalty_easy_hard]"
+                     class="form-control"
+                     value="<?= htmlspecialchars($cfgWeights['penalty_easy_hard'] ?? 0.2) ?>">
+              <small class="text-muted">Штрафной коэффициент для слишком лёгких/сложных вопросов</small>
+            </div>
+          </div>
+
         </div>
-        
-        <div class="form-card">
-          <h6 class="fw-semibold mb-3"><?= t('discipline_settings') ?></h6>
-          <form method="post" class="mb-3">
-            <?= csrf_input() ?>
-            <div class="mb-3">
-              <label class="form-label"><?= t('discipline') ?></label>
-              <select name="discipline_id" class="form-select">
-                <option value=""><?= t('select_discipline') ?></option>
-                <option value="1">Педиатрия</option>
-                <option value="2">Хирургия</option>
-                <option value="3">Терапия</option>
-              </select>
-            </div>
-            <div class="mb-3">
-              <label class="form-label"><?= t('difficulty_coeff') ?></label>
-              <input type="number" step="0.01" min="0" max="2" name="discipline_difficulty_coeff" class="form-control" value="1.0">
-            </div>
-            <div class="mb-3">
-              <label class="form-label"><?= t('importance_coeff') ?></label>
-              <input type="number" step="0.01" min="0" max="2" name="discipline_importance_coeff" class="form-control" value="1.0">
-            </div>
-            <button type="submit" class="btn btn-primary"><?= t('save_settings') ?></button>
-          </form>
-        </div>
-        
-        <div class="form-card">
-          <h6 class="fw-semibold mb-3"><?= t('specialty_settings') ?></h6>
-          <form method="post" class="mb-3">
-            <?= csrf_input() ?>
-            <div class="mb-3">
-              <label class="form-label"><?= t('specialty') ?></label>
-              <select name="specialty_id" class="form-select">
-                <option value=""><?= t('select_specialty') ?></option>
-                <option value="1">Лечебное дело</option>
-                <option value="2">Педиатрия</option>
-                <option value="3">Стоматология</option>
-              </select>
-            </div>
-            <div class="mb-3">
-              <label class="form-label"><?= t('base_difficulty_threshold') ?></label>
-              <input type="number" step="0.01" min="0" max="1" name="specialty_difficulty_threshold" class="form-control" value="0.5">
-            </div>
-            <div class="mb-3">
-              <label class="form-label"><?= t('strictness_coeff') ?></label>
-              <input type="number" step="0.01" min="0" max="2" name="specialty_strictness_coeff" class="form-control" value="1.0">
-            </div>
-            <button type="submit" class="btn btn-primary"><?= t('save_settings') ?></button>
-          </form>
-        </div>
-      </div>
+        <button type="submit" class="btn btn-primary mt-2" id="settingsSubmitBtn"><?= t('save_settings') ?></button>
+      </form>
+      <script>
+      document.getElementById('settingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var btn = document.getElementById('settingsSubmitBtn');
+        var msg = document.getElementById('settings-msg');
+        btn.disabled = true;
+        btn.textContent = '...';
+        msg.innerHTML = '';
+        fetch('api/settings.php', {
+          method: 'POST',
+          body: new FormData(e.target),
+          cache: 'no-store'
+        })
+        .then(function(r) {
+          return r.text().then(function(txt) {
+            try { return JSON.parse(txt); }
+            catch(e) { throw new Error('Не-JSON ответ: ' + txt.substring(0, 300)); }
+          });
+        })
+        .then(function(d) {
+          if (d.error) {
+            msg.innerHTML = '<div class="alert alert-danger mb-2"><b>Ошибка:</b> ' + d.error + '</div>';
+          } else {
+            msg.innerHTML = '<div class="alert alert-success mb-2">Сохранено: ' + (d.saved ? d.saved.join(', ') : '0') + '</div>';
+            if (d.coefficients) {
+              var coef = d.coefficients;
+              var map = {
+                'coefficients[quality][easy_threshold]':         (coef.quality || {}).easy_threshold,
+                'coefficients[quality][hard_threshold]':         (coef.quality || {}).hard_threshold,
+                'coefficients[quality][discrimination_strong]':  (coef.quality || {}).discrimination_strong,
+                'coefficients[discrimination][min_students]':    (coef.discrimination || {}).min_students,
+                'coefficients[similarity][duplicate_threshold]': (coef.similarity || {}).duplicate_threshold,
+                'coefficients[risk][systemic_avg]':              (coef.risk || {}).systemic_avg,
+                'coefficients[risk][spot_min]':                  (coef.risk || {}).spot_min,
+                'coefficients[weights][score_weight]':           (coef.weights || {}).score_weight,
+                'coefficients[weights][penalty_easy_hard]':      (coef.weights || {}).penalty_easy_hard
+              };
+              Object.keys(map).forEach(function(name) {
+                var el = document.querySelector('[name="' + name + '"]');
+                if (el && map[name] !== undefined) el.value = map[name];
+              });
+            }
+          }
+        })
+        .catch(function(err) {
+          msg.innerHTML = '<div class="alert alert-danger mb-2">Ошибка запроса: ' + (err && err.message ? err.message : 'сервер вернул не-JSON') + '</div>';
+        })
+        .finally(function() {
+          btn.disabled = false;
+          btn.textContent = '<?= addslashes(t('save_settings')) ?>';
+        });
+      });
+      </script>
     </div>
   </div>
 
@@ -2545,7 +2755,7 @@ table tbody tr:last-child td { border-bottom: none; }
             <canvas id="criteriaChartTab" style="max-height: 300px;"></canvas>
         </div>
         <div class="table-responsive">
-          <table class="table table-striped table-hover">
+          <table class="table table-hover">
             <thead>
               <tr>
                 <th>Criteria ID</th>
@@ -2615,30 +2825,32 @@ table tbody tr:last-child td { border-bottom: none; }
             <canvas id="answersChartTab" style="max-height: 300px;"></canvas>
         </div>
         <div class="table-responsive">
-          <table class="table table-striped table-hover">
+          <table class="table table-hover">
             <thead>
               <tr>
-                <th>Language</th>
-                <th>Total Answers</th>
-                <th>Avg Score</th>
-                <th>Avg Penalty</th>
-                <th>Plagiarism Count</th>
-                <th>Plagiarism Rate</th>
+                <th>Язык</th>
+                <th>Всего ответов</th>
+                <th>Ср. балл</th>
+                <th>Штраф</th>
+                <th>Плагиат (кол-во)</th>
+                <th>% плагиата</th>
+                <th>Флаг</th>
               </tr>
             </thead>
             <tbody>
-              <?php foreach ($answersAnalysis as $item): ?>
-                <tr class="<?= $item['plagiarism_rate'] > 10 ? 'table-danger' : 'table-success' ?>">
+              <?php foreach ($answersAnalysis as $item):
+                $rate = (float)($item['plagiarism_rate'] ?? 0);
+                $fc   = $rate > 10 ? 'danger' : ($rate > 5 ? 'warning' : 'success');
+                $flbl = $rate > 10 ? 'Высокий плагиат' : ($rate > 5 ? 'Умеренный' : 'Норма');
+              ?>
+                <tr class="ai-row-<?= $fc ?>">
                   <td><strong><?= h($item['language']) ?></strong></td>
                   <td><?= h($item['total_answers']) ?></td>
-                  <td><strong><?= h($item['avg_score']) ?></strong></td>
+                  <td><?= h($item['avg_score']) ?></td>
                   <td><?= h($item['avg_penalty']) ?></td>
                   <td><?= h($item['plagiarism_count']) ?></td>
-                  <td>
-                    <span class="badge bg-<?= $item['plagiarism_rate'] > 10 ? 'danger' : 'success' ?>">
-                      <?= h($item['plagiarism_rate']) ?>%
-                    </span>
-                  </td>
+                  <td><?= h($item['plagiarism_rate']) ?>%</td>
+                  <td><span class="badge badge-soft <?= $fc ?>"><?= $flbl ?></span></td>
                 </tr>
               <?php endforeach; ?>
             </tbody>
@@ -2655,119 +2867,334 @@ table tbody tr:last-child td { border-bottom: none; }
   </div>
 
   <div id="section-syllabus-link" class="ai-section <?= $section === 'syllabus-link' ? 'active' : '' ?>">
+    <?php
+    $slQuestions = [];
+    $slTotal = 0;
+    $slError = '';
+    $slTopics = [];
+    try {
+        if ($importId !== null) {
+            $slCountStmt = $pdo->prepare("SELECT COUNT(DISTINCT hq.question_id) FROM hier_questions hq INNER JOIN raw_exam_results r ON r.question_id = hq.question_id AND r.import_id = ? WHERE hq.question_text IS NOT NULL AND hq.question_text != '' AND hq.question_text NOT REGEXP '^Вопрос[[:space:]]+[0-9]+$'");
+            $slCountStmt->execute([$importId]);
+            $slTotal = (int)$slCountStmt->fetchColumn();
+            $slQuestionsStmt = $pdo->prepare("
+                SELECT hq.question_id, hq.question_text, hq.syllabus_topic_id, st.title as syllabus_title,
+                       MAX(r.discipline_name) as discipline_name
+                FROM hier_questions hq
+                INNER JOIN raw_exam_results r ON r.question_id = hq.question_id AND r.import_id = ?
+                LEFT JOIN ai_syllabus_topics st ON st.syllabus_topic_id = hq.syllabus_topic_id
+                WHERE hq.question_text IS NOT NULL AND hq.question_text != ''
+                AND hq.question_text NOT REGEXP '^Вопрос[[:space:]]+[0-9]+\$'
+                GROUP BY hq.question_id
+                ORDER BY hq.question_id LIMIT 500
+            ");
+            $slQuestionsStmt->execute([$importId]);
+            $slQuestions = $slQuestionsStmt->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $slTotal = (int)$pdo->query("SELECT COUNT(*) FROM hier_questions WHERE question_text IS NOT NULL AND question_text != '' AND question_text NOT REGEXP '^Вопрос[[:space:]]+[0-9]+$'")->fetchColumn();
+            $slQuestions = $pdo->query("
+                SELECT hq.question_id, hq.question_text, hq.syllabus_topic_id, st.title as syllabus_title,
+                       '' as discipline_name
+                FROM hier_questions hq
+                LEFT JOIN ai_syllabus_topics st ON st.syllabus_topic_id = hq.syllabus_topic_id
+                WHERE hq.question_text IS NOT NULL AND hq.question_text != ''
+                AND hq.question_text NOT REGEXP '^Вопрос[[:space:]]+[0-9]+\$'
+                ORDER BY hq.question_id LIMIT 500
+            ")->fetchAll(PDO::FETCH_ASSOC);
+        }
+        $slTopics = $pdo->query("
+            SELECT DISTINCT st.syllabus_topic_id, st.discipline_name, st.course_number, st.title
+            FROM ai_syllabus_topics st
+            INNER JOIN user_syllabuses us ON us.discipline_name = st.discipline_name
+            ORDER BY st.discipline_name, st.course_number, st.title LIMIT 100
+        ")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        $slError = $e->getMessage();
+    }
+    $slLinked   = count(array_filter($slQuestions, fn($q) => !empty($q['syllabus_title'])));
+    $slUnlinked = count($slQuestions) - $slLinked;
+    ?>
+
     <div class="table-container">
-      <h3 class="h5 mb-3"><?= t('link_syllabus_questions') ?></h3>
-      <?php if ($section === 'syllabus-link'): ?>
-      <?php
-      $slQuestions = [];
-      $slTotal = 0;
-      $slError = '';
-      $slTopics = [];
-      try {
-          if ($importId !== null) {
-              $slCountStmt = $pdo->prepare("SELECT COUNT(DISTINCT hq.question_id) FROM hier_questions hq INNER JOIN raw_exam_results r ON r.question_id = hq.question_id AND r.import_id = ? WHERE hq.question_text IS NOT NULL AND hq.question_text != '' AND hq.question_text NOT REGEXP '^Вопрос[[:space:]]+[0-9]+$'");
-              $slCountStmt->execute([$importId]);
-              $slTotal = (int)$slCountStmt->fetchColumn();
-              $slQuestionsStmt = $pdo->prepare("
-                  SELECT hq.question_id, hq.question_text, hq.syllabus_topic_id, st.title as syllabus_title,
-                         MAX(r.discipline_name) as discipline_name
-                  FROM hier_questions hq
-                  INNER JOIN raw_exam_results r ON r.question_id = hq.question_id AND r.import_id = ?
-                  LEFT JOIN ai_syllabus_topics st ON st.syllabus_topic_id = hq.syllabus_topic_id
-                  WHERE hq.question_text IS NOT NULL AND hq.question_text != ''
-                  AND hq.question_text NOT REGEXP '^Вопрос[[:space:]]+[0-9]+\$'
-                  GROUP BY hq.question_id
-                  ORDER BY hq.question_id LIMIT 500
-              ");
-              $slQuestionsStmt->execute([$importId]);
-              $slQuestions = $slQuestionsStmt->fetchAll(PDO::FETCH_ASSOC);
-          } else {
-              $slTotal = (int)$pdo->query("SELECT COUNT(*) FROM hier_questions WHERE question_text IS NOT NULL AND question_text != '' AND question_text NOT REGEXP '^Вопрос[[:space:]]+[0-9]+$'")->fetchColumn();
-              $slQuestions = $pdo->query("
-                  SELECT hq.question_id, hq.question_text, hq.syllabus_topic_id, st.title as syllabus_title,
-                         '' as discipline_name
-                  FROM hier_questions hq
-                  LEFT JOIN ai_syllabus_topics st ON st.syllabus_topic_id = hq.syllabus_topic_id
-                  WHERE hq.question_text IS NOT NULL AND hq.question_text != ''
-                  AND hq.question_text NOT REGEXP '^Вопрос[[:space:]]+[0-9]+\$'
-                  ORDER BY hq.question_id LIMIT 500
-              ")->fetchAll(PDO::FETCH_ASSOC);
-          }
-          $slTopics = $pdo->query("
-              SELECT DISTINCT st.syllabus_topic_id, st.discipline_name, st.course_number, st.title
-              FROM ai_syllabus_topics st
-              INNER JOIN user_syllabuses us ON us.discipline_name = st.discipline_name
-              ORDER BY st.discipline_name, st.course_number, st.title LIMIT 100
-          ")->fetchAll(PDO::FETCH_ASSOC);
-      } catch (Throwable $e) {
-          $slError = $e->getMessage();
-      }
-      ?>
-      <div class="alert alert-info">
-        <strong><?= t('select_questions') ?></strong>
-        <ul class="mb-0 mt-2">
-          <li><?= t('select_questions_for_link') ?></li>
-          <li><?= t('select_topic_from_dropdown') ?></li>
-        </ul>
+    <div class="sl-page-header">
+      <div class="sl-header-left">
+        <div class="sl-header-icon"><i class="bi bi-link-45deg"></i></div>
+        <div>
+          <h3 class="sl-header-title"><?= t('link_syllabus_questions') ?></h3>
+          <p class="sl-header-desc"><?= t('select_questions_for_link') ?></p>
+        </div>
       </div>
-      <?php if ($slError): ?>
-        <div class="alert alert-danger"><?= h($slError) ?></div>
-      <?php endif; ?>
-      <form method="post" class="mb-4">
-        <?= csrf_input() ?>
-        <input type="hidden" name="link_selected_questions" value="1">
-        <div class="mb-3">
-          <label class="form-label fw-semibold"><?= t('select_syllabus_topic') ?> (<?= t('available_topics') ?>: <span id="slTopicCount"><?= count($slTopics) ?></span>)</label>
-          <div style="display: flex; gap: 8px;">
-            <select name="syllabus_topic_id" class="form-select" required id="slTopicSelect">
-              <option value="">-- <?= t('select_syllabus_topic') ?> --</option>
+      <div class="sl-header-stats">
+        <div class="sl-stat-chip">
+          <span class="sl-stat-num"><?= count($slQuestions) ?></span>
+          <span class="sl-stat-lbl"><?= t('shown') ?></span>
+        </div>
+        <div class="sl-stat-chip sl-stat-chip--success">
+          <span class="sl-stat-num"><?= $slLinked ?></span>
+          <span class="sl-stat-lbl">Привязано</span>
+        </div>
+        <div class="sl-stat-chip sl-stat-chip--warn">
+          <span class="sl-stat-num"><?= $slUnlinked ?></span>
+          <span class="sl-stat-lbl">Без привязки</span>
+        </div>
+      </div>
+    </div>
+
+    <?php if ($slError): ?>
+      <div class="alert alert-danger mb-3"><?= h($slError) ?></div>
+    <?php endif; ?>
+    <div id="sl-msg"></div>
+
+    <form id="slLinkForm">
+      <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+      <input type="hidden" name="link_selected_questions" value="1">
+
+      <div class="sl-topic-card">
+        <div class="sl-topic-card-header">
+          <i class="bi bi-journal-text"></i>
+          <span><?= t('select_syllabus_topic') ?></span>
+          <span class="sl-topic-badge" id="slTopicCount"><?= count($slTopics) ?> <?= t('available_topics') ?></span>
+        </div>
+        <div class="sl-topic-select-row">
+          <input type="hidden" name="syllabus_topic_id" id="slTopicHidden">
+          <div class="sl-custom-select" id="slCustomSelect">
+            <div class="sl-custom-trigger" onclick="slToggleDropdown(event)">
+              <span class="sl-custom-label" id="slCustomLabel">— <?= t('select_syllabus_topic') ?> —</span>
+              <i class="bi bi-chevron-down sl-custom-arrow"></i>
+            </div>
+            <div class="sl-custom-dropdown" id="slCustomDropdown">
               <?php foreach ($slTopics as $topic): ?>
-                <option value="<?= (int)$topic['syllabus_topic_id'] ?>"><?= h($topic['discipline_name']) ?> - <?= h($topic['course_number']) ?>: <?= h($topic['title']) ?></option>
+                <div class="sl-custom-option"
+                     data-value="<?= (int)$topic['syllabus_topic_id'] ?>"
+                     onclick="slSelectOption(this,'<?= (int)$topic['syllabus_topic_id'] ?>',<?= json_encode($topic['discipline_name'] . ' — ' . $topic['course_number'] . ' курс: ' . $topic['title']) ?>)">
+                  <?= h($topic['discipline_name']) ?> — <?= (int)$topic['course_number'] ?> курс: <?= h($topic['title']) ?>
+                </div>
               <?php endforeach; ?>
-            </select>
-            <button type="button" class="btn btn-outline-secondary" onclick="refreshSyllabusTopics()" title="<?= t('refresh') ?>"><i class="bi bi-arrow-clockwise"></i></button>
+            </div>
+          </div>
+          <button type="button" class="sl-refresh-btn" id="slRefreshBtn" onclick="slRefreshTopics()" title="<?= t('refresh') ?>">
+            <i class="bi bi-arrow-clockwise"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="sl-questions-panel">
+        <div class="sl-toolbar">
+          <div class="sl-search-wrap">
+            <i class="bi bi-search sl-search-icon"></i>
+            <input type="text" id="slSearch" class="sl-search-input" placeholder="<?= t('search_placeholder') ?>" onkeyup="filterSlQuestions()">
+          </div>
+          <div class="sl-filter-row">
+            <button type="button" class="sl-filter-btn active" data-filter="all" onclick="slSetFilter(this,'all')">Все <span class="sl-filter-count"><?= count($slQuestions) ?></span></button>
+            <button type="button" class="sl-filter-btn" data-filter="linked" onclick="slSetFilter(this,'linked')">Привязаны <span class="sl-filter-count sl-filter-count--success"><?= $slLinked ?></span></button>
+            <button type="button" class="sl-filter-btn" data-filter="unlinked" onclick="slSetFilter(this,'unlinked')">Без привязки <span class="sl-filter-count sl-filter-count--warn"><?= $slUnlinked ?></span></button>
+          </div>
+          <div class="sl-selection-badge" id="slSelBadge" style="display:none">
+            <i class="bi bi-check2-square"></i>
+            <span id="slSelCount">0</span> выбрано
           </div>
         </div>
-        <div class="mb-3">
-          <label class="form-label fw-semibold"><?= t('all_questions') ?> (<?= t('total') ?>: <?= $slTotal ?>, <?= t('shown') ?>: <?= count($slQuestions) ?>)</label>
-          <input type="text" id="slSearch" class="form-control mb-2" placeholder="<?= t('search_placeholder') ?>" onkeyup="filterSlQuestions()">
-          <?php if (empty($slQuestions)): ?>
-            <p class="text-muted"><?= t('no_questions_db') ?></p>
-          <?php else: ?>
-            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-              <table class="table table-sm table-hover" id="slTable">
-                <thead>
-                  <tr>
-                    <th style="width:50px"><input type="checkbox" id="slSelectAll" onchange="document.querySelectorAll('.sl-cb').forEach(c=>c.checked=this.checked)"></th>
-                    <th>ID</th><th>Question</th><th>Discipline</th><th>Current Topic</th>
+
+        <?php if (empty($slQuestions)): ?>
+          <div class="sl-empty-state">
+            <i class="bi bi-inbox"></i>
+            <p><?= t('no_questions_db') ?></p>
+          </div>
+        <?php else: ?>
+          <div class="sl-table-wrap">
+            <table class="table table-sm sl-table" id="slTable">
+              <thead>
+                <tr>
+                  <th class="sl-col-check"><input type="checkbox" id="slSelectAll" class="sl-checkbox" onchange="slToggleAll(this.checked)"></th>
+                  <th class="sl-col-id">ID</th>
+                  <th>Вопрос</th>
+                  <th class="sl-col-disc">Дисциплина</th>
+                  <th class="sl-col-topic">Тема силлабуса</th>
+                </tr>
+              </thead>
+              <tbody id="slTableBody">
+                <?php foreach ($slQuestions as $q): ?>
+                  <tr data-q="<?= h(mb_strtolower($q['question_text'] ?? '')) ?>"
+                      data-d="<?= h(mb_strtolower($q['discipline_name'] ?? '')) ?>"
+                      data-t="<?= h(mb_strtolower($q['syllabus_title'] ?? '')) ?>"
+                      data-linked="<?= empty($q['syllabus_title']) ? '0' : '1' ?>"
+                      onclick="slRowClick(event,this)"
+                      style="cursor:pointer"
+                      >
+                    <td class="sl-col-check"><input type="checkbox" name="question_ids[]" value="<?= (int)$q['question_id'] ?>" class="sl-cb sl-checkbox" onchange="slOnCheck()"></td>
+                    <td class="sl-col-id"><?= (int)$q['question_id'] ?></td>
+                    <td class="sl-col-text" title="<?= h($q['question_text'] ?? '') ?>"><?= h(mb_substr($q['question_text'] ?? '', 0, 90)) ?><?= mb_strlen($q['question_text'] ?? '') > 90 ? '…' : '' ?></td>
+                    <td class="sl-col-disc"><?= h($q['discipline_name'] ?? '') ?></td>
+                    <td class="sl-col-topic">
+                      <?php if ($q['syllabus_title']): ?>
+                        <span class="sl-badge sl-badge--linked"><i class="bi bi-check-circle-fill"></i> <?= h($q['syllabus_title']) ?></span>
+                      <?php else: ?>
+                        <span class="sl-badge sl-badge--unlinked"><i class="bi bi-dash-circle"></i> Не привязан</span>
+                      <?php endif; ?>
+                    </td>
                   </tr>
-                </thead>
-                <tbody id="slTableBody">
-                  <?php foreach ($slQuestions as $q): ?>
-                    <tr data-q="<?= h(mb_strtolower($q['question_text'] ?? '')) ?>" data-d="<?= h(mb_strtolower($q['discipline_name'] ?? '')) ?>" data-t="<?= h(mb_strtolower($q['syllabus_title'] ?? '')) ?>">
-                      <td><input type="checkbox" name="question_ids[]" value="<?= (int)$q['question_id'] ?>" class="sl-cb" style="transform:scale(1.2);cursor:pointer"></td>
-                      <td><?= (int)$q['question_id'] ?></td>
-                      <td><?= h(mb_substr($q['question_text'] ?? '', 0, 80)) ?></td>
-                      <td><?= h($q['discipline_name'] ?? '') ?></td>
-                      <td><?= $q['syllabus_title'] ? h($q['syllabus_title']) : '<span class="text-muted">' . t('not_linked') . '</span>' ?></td>
-                    </tr>
-                  <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          <?php endif; ?>
-        </div>
-        <button type="submit" class="btn btn-primary" <?= empty($slQuestions) ? 'disabled' : '' ?>><?= t('link_selected') ?></button>
-      </form>
-      <script>
-      function filterSlQuestions() {
-        const q = document.getElementById('slSearch').value.toLowerCase();
-        document.querySelectorAll('#slTableBody tr').forEach(r => {
-          r.style.display = (!q || r.dataset.q.includes(q) || r.dataset.d.includes(q) || r.dataset.t.includes(q)) ? '' : 'none';
-        });
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="sl-action-bar" id="slActionBar">
+            <span class="sl-action-info">
+              <i class="bi bi-check2-square"></i>
+              Выбрано: <strong id="slActionCount">0</strong> вопрос(ов)
+            </span>
+            <button type="submit" class="btn btn-primary sl-link-btn" id="slLinkBtn" disabled>
+              <i class="bi bi-link-45deg"></i>
+              <?= t('link_selected') ?>
+            </button>
+          </div>
+        <?php endif; ?>
+      </div>
+    </form>
+
+    <script>
+    let slCurrentFilter = 'all';
+
+    function slToggleDropdown(e) {
+      e.stopPropagation();
+      const cs = document.getElementById('slCustomSelect');
+      cs.classList.toggle('open');
+    }
+
+    function slSelectOption(el, value, label) {
+      document.getElementById('slTopicHidden').value = value;
+      document.getElementById('slCustomLabel').textContent = label;
+      document.getElementById('slCustomLabel').classList.remove('sl-custom-placeholder');
+      document.getElementById('slCustomSelect').classList.remove('open');
+      document.querySelectorAll('.sl-custom-option').forEach(o => o.classList.remove('selected'));
+      el.classList.add('selected');
+    }
+
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('#slCustomSelect')) {
+        const cs = document.getElementById('slCustomSelect');
+        if (cs) cs.classList.remove('open');
       }
-      </script>
-      <?php endif; ?>
+    });
+
+    function slRefreshTopics() {
+      const btn = document.getElementById('slRefreshBtn');
+      if (btn) btn.classList.add('sl-spinning');
+      fetch('?section=import&refresh_topics=1', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(r => r.json())
+        .then(data => {
+          const dd    = document.getElementById('slCustomDropdown');
+          const badge = document.getElementById('slTopicCount');
+          dd.innerHTML = '';
+          data.topics.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'sl-custom-option';
+            div.dataset.value = t.syllabus_topic_id;
+            div.textContent = t.discipline_name + ' — ' + t.course_number + ' курс: ' + t.title;
+            const lbl = t.discipline_name + ' — ' + t.course_number + ' курс: ' + t.title;
+            div.onclick = () => slSelectOption(div, t.syllabus_topic_id, lbl);
+            dd.appendChild(div);
+          });
+          if (badge) badge.textContent = data.topics.length + ' <?= addslashes(t('available_topics')) ?>';
+        })
+        .catch(() => {})
+        .finally(() => { if (btn) btn.classList.remove('sl-spinning'); });
+    }
+
+    function slRowClick(e, tr) {
+      if (e.target.type === 'checkbox') return;
+      const cb = tr.querySelector('.sl-cb');
+      if (cb) { cb.checked = !cb.checked; slOnCheck(); }
+    }
+
+    function slToggleAll(checked) {
+      document.querySelectorAll('#slTableBody tr:not([style*="none"]) .sl-cb').forEach(c => c.checked = checked);
+      slOnCheck();
+    }
+
+    function slOnCheck() {
+      const n     = document.querySelectorAll('.sl-cb:checked').length;
+      const badge = document.getElementById('slSelBadge');
+      const bar   = document.getElementById('slActionBar');
+      const btn   = document.getElementById('slLinkBtn');
+      document.getElementById('slSelCount').textContent   = n;
+      document.getElementById('slActionCount').textContent = n;
+      if (badge) badge.style.display = n > 0 ? 'flex' : 'none';
+      if (btn)   btn.disabled = n === 0;
+      if (bar)   bar.classList.toggle('sl-action-bar--active', n > 0);
+      document.querySelectorAll('#slTableBody tr').forEach(r => {
+        const cb = r.querySelector('.sl-cb');
+        if (cb) r.classList.toggle('sl-row--selected', cb.checked);
+      });
+    }
+
+    function slSetFilter(el, filter) {
+      slCurrentFilter = filter;
+      document.querySelectorAll('.sl-filter-btn').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+      filterSlQuestions();
+    }
+
+    function filterSlQuestions() {
+      const q = document.getElementById('slSearch').value.toLowerCase();
+      document.querySelectorAll('#slTableBody tr').forEach(r => {
+        const matchText   = !q || r.dataset.q.includes(q) || r.dataset.d.includes(q) || r.dataset.t.includes(q);
+        const matchFilter = slCurrentFilter === 'all'
+          || (slCurrentFilter === 'linked'   && r.dataset.linked === '1')
+          || (slCurrentFilter === 'unlinked' && r.dataset.linked === '0');
+        r.style.display = (matchText && matchFilter) ? '' : 'none';
+      });
+    }
+
+    document.getElementById('slLinkForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const form = e.target;
+      const btn  = document.getElementById('slLinkBtn');
+      const msg  = document.getElementById('sl-msg');
+
+      if (!document.getElementById('slTopicHidden').value) {
+        msg.innerHTML = '<div class="alert alert-warning mb-3"><?= addslashes(t('select_topic_from_dropdown')) ?></div>';
+        return;
+      }
+
+      const data = new FormData(form);
+      btn.disabled = true;
+      btn.innerHTML = '<i class="bi bi-hourglass-split"></i> ...';
+      msg.innerHTML = '';
+
+      fetch('api/link_questions.php', { method: 'POST', body: data, cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) {
+            msg.innerHTML = '<div class="alert alert-danger mb-3">' + d.error + '</div>';
+          } else {
+            msg.innerHTML = '<div class="alert alert-success mb-3"><i class="bi bi-check-circle me-2"></i>Привязано: <strong>' + d.linked + '</strong> вопрос(ов) → «' + d.topic_title.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '»</div>';
+            const topicTitle = d.topic_title || '';
+            const topicHtml  = topicTitle
+              ? '<span class="sl-badge sl-badge--linked"><i class="bi bi-check-circle-fill"></i> ' + topicTitle.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</span>'
+              : '<span class="sl-badge sl-badge--unlinked"><i class="bi bi-dash-circle"></i> Не привязан</span>';
+            form.querySelectorAll('.sl-cb:checked').forEach(cb => {
+              const row = cb.closest('tr');
+              if (row) {
+                row.cells[4].innerHTML = topicHtml;
+                row.dataset.t      = topicTitle.toLowerCase();
+                row.dataset.linked = '1';
+              }
+              cb.checked = false;
+            });
+            document.getElementById('slSelectAll').checked = false;
+            slOnCheck();
+          }
+        })
+        .catch(() => {
+          msg.innerHTML = '<div class="alert alert-danger mb-3">Ошибка сети</div>';
+        })
+        .finally(() => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-link-45deg"></i> <?= addslashes(t('link_selected')) ?>';
+        });
+    });
+    </script>
     </div>
   </div>
 
@@ -2857,35 +3284,42 @@ function initializeCharts() {
                         data: chartData.questionQuality.data,
                         backgroundColor: chartData.questionQuality.backgroundColors,
                         borderColor: chartData.questionQuality.colors,
-                        borderWidth: 2,
-                        hoverOffset: 8
+                        borderWidth: 3,
+                        borderColor: '#ffffff',
+                        hoverBorderColor: '#ffffff',
+                        hoverOffset: 10
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    cutout: '65%',
+                    cutout: '72%',
                     plugins: {
                         legend: {
-                            position: 'right',
+                            position: 'bottom',
                             labels: {
                                 padding: 20,
-                                font: {
-                                    size: 13,
-                                    family: 'Inter',
-                                    weight: '500'
-                                },
-                                color: '#475569',
                                 usePointStyle: true,
-                                pointStyle: 'circle'
+                                pointStyleWidth: 10,
+                                font: { size: 12, family: "'Inter', -apple-system, sans-serif", weight: '500' },
+                                color: '#64748b',
+                                boxWidth: 10,
+                                boxHeight: 10
                             }
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: true,
                             callbacks: {
                                 label: function(context) {
@@ -2971,11 +3405,18 @@ function initializeCharts() {
                             display: false
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: false,
                             callbacks: {
                                 label: function(context) {
@@ -3067,11 +3508,18 @@ function initializeCharts() {
                             display: false
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: false,
                             callbacks: {
                                 label: function(context) {
@@ -3117,35 +3565,42 @@ function initializeCharts() {
                             'rgba(239, 68, 68, 1)',
                             'rgba(156, 163, 175, 1)'
                         ],
-                        borderWidth: 2,
-                        hoverOffset: 8
+                        borderWidth: 3,
+                        borderColor: '#ffffff',
+                        hoverBorderColor: '#ffffff',
+                        hoverOffset: 10
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    cutout: '65%',
+                    cutout: '72%',
                     plugins: {
                         legend: {
-                            position: 'right',
+                            position: 'bottom',
                             labels: {
                                 padding: 20,
-                                font: {
-                                    size: 13,
-                                    family: 'Inter',
-                                    weight: '500'
-                                },
-                                color: '#475569',
                                 usePointStyle: true,
-                                pointStyle: 'circle'
+                                pointStyleWidth: 10,
+                                font: { size: 12, family: "'Inter', -apple-system, sans-serif", weight: '500' },
+                                color: '#64748b',
+                                boxWidth: 10,
+                                boxHeight: 10
                             }
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: true,
                             callbacks: {
                                 label: function(context) {
@@ -3231,11 +3686,18 @@ function initializeCharts() {
                             display: false
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: false,
                             callbacks: {
                                 label: function(context) {
@@ -3283,35 +3745,42 @@ function initializeCharts() {
                             'rgba(16, 185, 129, 1)',
                             'rgba(139, 92, 246, 1)'
                         ],
-                        borderWidth: 2,
-                        hoverOffset: 8
+                        borderWidth: 3,
+                        borderColor: '#ffffff',
+                        hoverBorderColor: '#ffffff',
+                        hoverOffset: 10
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    cutout: '65%',
+                    cutout: '72%',
                     plugins: {
                         legend: {
-                            position: 'right',
+                            position: 'bottom',
                             labels: {
                                 padding: 20,
-                                font: {
-                                    size: 13,
-                                    family: 'Inter',
-                                    weight: '500'
-                                },
-                                color: '#475569',
                                 usePointStyle: true,
-                                pointStyle: 'circle'
+                                pointStyleWidth: 10,
+                                font: { size: 12, family: "'Inter', -apple-system, sans-serif", weight: '500' },
+                                color: '#64748b',
+                                boxWidth: 10,
+                                boxHeight: 10
                             }
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: true,
                             callbacks: {
                                 label: function(context) {
@@ -3397,11 +3866,18 @@ function initializeCharts() {
                             display: false
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: false,
                             callbacks: {
                                 label: function(context) {
@@ -3439,35 +3915,42 @@ function initializeCharts() {
                         data: chartData.validation.data,
                         backgroundColor: chartData.validation.backgroundColors,
                         borderColor: chartData.validation.colors,
-                        borderWidth: 2,
-                        hoverOffset: 8
+                        borderWidth: 3,
+                        borderColor: '#ffffff',
+                        hoverBorderColor: '#ffffff',
+                        hoverOffset: 10
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    cutout: '65%',
+                    cutout: '72%',
                     plugins: {
                         legend: {
-                            position: 'right',
+                            position: 'bottom',
                             labels: {
                                 padding: 20,
-                                font: {
-                                    size: 13,
-                                    family: 'Inter',
-                                    weight: '500'
-                                },
-                                color: '#475569',
                                 usePointStyle: true,
-                                pointStyle: 'circle'
+                                pointStyleWidth: 10,
+                                font: { size: 12, family: "'Inter', -apple-system, sans-serif", weight: '500' },
+                                color: '#64748b',
+                                boxWidth: 10,
+                                boxHeight: 10
                             }
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: true,
                             callbacks: {
                                 label: function(context) {
@@ -3504,35 +3987,42 @@ function initializeCharts() {
                         data: chartData.questionQuality.data,
                         backgroundColor: chartData.questionQuality.backgroundColors,
                         borderColor: chartData.questionQuality.colors,
-                        borderWidth: 2,
-                        hoverOffset: 8
+                        borderWidth: 3,
+                        borderColor: '#ffffff',
+                        hoverBorderColor: '#ffffff',
+                        hoverOffset: 10
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    cutout: '65%',
+                    cutout: '72%',
                     plugins: {
                         legend: {
-                            position: 'right',
+                            position: 'bottom',
                             labels: {
                                 padding: 20,
-                                font: {
-                                    size: 13,
-                                    family: 'Inter',
-                                    weight: '500'
-                                },
-                                color: '#475569',
                                 usePointStyle: true,
-                                pointStyle: 'circle'
+                                pointStyleWidth: 10,
+                                font: { size: 12, family: "'Inter', -apple-system, sans-serif", weight: '500' },
+                                color: '#64748b',
+                                boxWidth: 10,
+                                boxHeight: 10
                             }
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: true,
                             callbacks: {
                                 label: function(context) {
@@ -3618,11 +4108,18 @@ function initializeCharts() {
                             display: false
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: false,
                             callbacks: {
                                 label: function(context) {
@@ -3714,11 +4211,18 @@ function initializeCharts() {
                             display: false
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: false,
                             callbacks: {
                                 label: function(context) {
@@ -3805,11 +4309,18 @@ function initializeCharts() {
                             display: false
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: false,
                             callbacks: {
                                 label: function(context) {
@@ -3847,35 +4358,42 @@ function initializeCharts() {
                         data: chartData.criteria.data,
                         backgroundColor: chartData.criteria.backgroundColors,
                         borderColor: chartData.criteria.colors,
-                        borderWidth: 2,
-                        hoverOffset: 8
+                        borderWidth: 3,
+                        borderColor: '#ffffff',
+                        hoverBorderColor: '#ffffff',
+                        hoverOffset: 10
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    cutout: '65%',
+                    cutout: '72%',
                     plugins: {
                         legend: {
-                            position: 'right',
+                            position: 'bottom',
                             labels: {
                                 padding: 20,
-                                font: {
-                                    size: 13,
-                                    family: 'Inter',
-                                    weight: '500'
-                                },
-                                color: '#475569',
                                 usePointStyle: true,
-                                pointStyle: 'circle'
+                                pointStyleWidth: 10,
+                                font: { size: 12, family: "'Inter', -apple-system, sans-serif", weight: '500' },
+                                color: '#64748b',
+                                boxWidth: 10,
+                                boxHeight: 10
                             }
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: true,
                             callbacks: {
                                 label: function(context) {
@@ -3961,11 +4479,18 @@ function initializeCharts() {
                             display: false
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                            titleFont: { size: 14, family: 'Inter', weight: '600' },
-                            bodyFont: { size: 12, family: 'Inter' },
+                            backgroundColor: '#0f172a',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: '#1e293b',
+                            borderWidth: 1,
+                            titleFont: { size: 12, weight: '600', family: "'Inter', -apple-system, sans-serif" },
+                            bodyFont: { size: 12, family: "'Inter', -apple-system, sans-serif" },
                             padding: 12,
-                            cornerRadius: 8,
+                            cornerRadius: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
                             displayColors: false,
                             callbacks: {
                                 label: function(context) {
@@ -4634,5 +5159,695 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
   </div>
 </div>
+
+<script>
+(function() {
+  var sectionMap = {
+    'overview':     'section-overview',
+    'import':       'section-import',
+    'validation':   'section-validation',
+    'quality':      'section-quality',
+    'correlation':  'section-correlation',
+    'students':     'section-students',
+    'semantic':     'section-semantic',
+    'rules':        'section-rules',
+    'settings':     'section-settings',
+    'criteria':     'section-criteria',
+    'answers':      'section-answers',
+    'syllabus-link':'section-syllabus-link'
+  };
+
+  function switchSection(key, pushState) {
+    var targetId = sectionMap[key];
+    if (!targetId) return;
+    var target = document.getElementById(targetId);
+    if (!target) return;
+
+    document.querySelectorAll('.ai-section').forEach(function(s) {
+      s.classList.remove('active');
+    });
+    target.classList.add('active');
+
+    document.querySelectorAll('.ai-nav-btn').forEach(function(btn) {
+      var href = btn.getAttribute('href') || '';
+      var match = href.match(/section=([^&]+)/);
+      btn.classList.toggle('active', match && match[1] === key);
+    });
+
+    if (typeof Chart !== 'undefined') {
+      target.querySelectorAll('canvas').forEach(function(canvas) {
+        var chart = Chart.getChart ? Chart.getChart(canvas) : null;
+        if (!chart && Chart.instances) {
+          Object.values(Chart.instances).forEach(function(c) {
+            if (c.canvas === canvas) chart = c;
+          });
+        }
+        if (chart) chart.resize();
+      });
+    }
+
+    if (pushState) {
+      var newUrl = window.location.pathname + '?section=' + encodeURIComponent(key);
+      history.pushState({ section: key }, '', newUrl);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.ai-nav-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        var href = btn.getAttribute('href') || '';
+        var match = href.match(/section=([^&]+)/);
+        if (!match) return;
+        var key = match[1];
+        if (!sectionMap[key]) return;
+        e.preventDefault();
+        switchSection(key, true);
+      });
+    });
+
+    window.addEventListener('popstate', function(e) {
+      var key = (e.state && e.state.section)
+        ? e.state.section
+        : (new URLSearchParams(window.location.search)).get('section') || 'validation';
+      switchSection(key, false);
+    });
+
+    initAiSearch();
+
+    var qs = new URLSearchParams(window.location.search);
+    var hType = qs.get('highlight_type');
+    var hId   = qs.get('highlight_id');
+    if (hType && hId) {
+      setTimeout(function() {
+        var sectionId = 'section-quality';
+        if (hType === 'topic')   sectionId = 'section-semantic';
+        if (hType === 'student') sectionId = 'section-students';
+        var scope = document.getElementById(sectionId);
+        if (!scope) return;
+
+        var row = null;
+        scope.querySelectorAll('table tbody tr').forEach(function(tr) {
+          if (row) return;
+          var cell = tr.querySelector('td');
+          if (cell && cell.textContent.trim() === String(hId)) row = tr;
+        });
+
+        if (row) {
+          row.style.transition = 'background 0.5s';
+          row.style.background = '#fef3c7';
+          row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setTimeout(function() { row.style.background = ''; }, 3500);
+        }
+      }, 400);
+    }
+  });
+
+  function initAiSearch() {
+    var inp = document.getElementById('ai-search-input');
+    var box = document.getElementById('ai-search-dropdown');
+    var modeBadge = document.getElementById('ai-search-mode');
+    if (!inp || !box) return;
+
+    var typeIcons = {
+      'question':   { icon: 'bi-file-text',     color: '#3b82f6', label: 'Вопрос' },
+      'topic':      { icon: 'bi-bookmark',      color: '#10b981', label: 'Тема' },
+      'discipline': { icon: 'bi-layers',        color: '#a855f7', label: 'Дисциплина' },
+      'import':     { icon: 'bi-upload',        color: '#f59e0b', label: 'Импорт' },
+      'student':    { icon: 'bi-person',        color: '#06b6d4', label: 'Студент' },
+      'exam':       { icon: 'bi-clipboard-check', color: '#ec4899', label: 'Экзамен' },
+      'rule':       { icon: 'bi-diagram-2',     color: '#84cc16', label: 'Правило' },
+      'criteria':   { icon: 'bi-check2-square', color: '#0891b2', label: 'Критерий' },
+      'answer':     { icon: 'bi-chat-left',     color: '#7c3aed', label: 'Ответ' }
+    };
+    var sectionLabels = {
+      'quality':'Качество','validation':'Валидация','correlation':'Корреляция',
+      'semantic':'Семантика','students':'Студенты','criteria':'Критерии',
+      'answers':'Ответы','syllabus-link':'Силлабус','import':'Импорт'
+    };
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+      });
+    }
+
+    function navigateTo(section, htype, hid) {
+      var qs = new URLSearchParams();
+      qs.set('section', section);
+      if (htype && hid) {
+        qs.set('highlight_type', htype);
+        qs.set('highlight_id', String(hid));
+      }
+      var lang = (new URLSearchParams(window.location.search)).get('lang');
+      if (lang) qs.set('lang', lang);
+      window.location.href = '?' + qs.toString();
+    }
+
+    function defaultSection(et) {
+      if (et === 'topic')      return 'semantic';
+      if (et === 'student')    return 'students';
+      if (et === 'discipline') return 'syllabus-link';
+      if (et === 'import')     return 'import';
+      if (et === 'exam')       return 'correlation';
+      if (et === 'criteria')   return 'criteria';
+      if (et === 'answer')     return 'answers';
+      return 'quality';
+    }
+
+    function renderResults(d) {
+      if (!d || !d.success || !d.results || !d.results.length) {
+        var emptyHtml = '';
+        if (d && d.index_size === 0 && d.mode !== 'id_lookup') {
+          emptyHtml += '<div style="padding:10px 14px;background:#fef3c7;border-bottom:1px solid #fde68a;font-size:12px;color:#92400e;display:flex;align-items:center;gap:8px">'
+            + '<span>⚠️</span>'
+            + '<span style="flex:1">Семантический индекс не построен. Сейчас работает только keyword/ID поиск.</span>'
+            + '<a href="settings.php" style="padding:3px 9px;font-size:11px;border:1px solid #d97706;background:#f59e0b;color:#fff;border-radius:5px;text-decoration:none">Построить</a>'
+            + '</div>';
+        }
+        emptyHtml += '<div style="padding:24px;text-align:center;color:#9ca3af;font-size:13px">Ничего не найдено</div>';
+        box.innerHTML = emptyHtml;
+        return;
+      }
+
+      var modeText = '';
+      if (d.mode === 'semantic')  { modeText = '⚡ AI поиск'; modeBadge.style.display = 'inline'; }
+      else { modeBadge.style.display = 'none'; }
+      if (d.mode === 'keyword')   modeText = '🔍 По ключевым словам';
+      if (d.mode === 'id_lookup') modeText = '🔢 По ID';
+
+      var html = '';
+      if (d.index_size === 0 && d.mode !== 'id_lookup') {
+        html += '<div style="padding:10px 14px;background:#fef3c7;border-bottom:1px solid #fde68a;font-size:12px;color:#92400e;display:flex;align-items:center;gap:8px">'
+          + '<span>⚠️</span>'
+          + '<span style="flex:1">Семантический индекс не построен (0 элементов). Сейчас работает поиск по ключевым словам.</span>'
+          + '<a href="settings.php" style="padding:3px 9px;font-size:11px;border:1px solid #d97706;background:#f59e0b;color:#fff;border-radius:5px;text-decoration:none">Построить</a>'
+          + '</div>';
+      }
+      html += '<div style="padding:8px 14px;background:#f9fafb;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #f3f4f6">' + escapeHtml(modeText) + ' · ' + d.results.length + ' рез.</div>';
+
+      d.results.forEach(function(r, idx) {
+        var ti = typeIcons[r.entity_type] || { icon: 'bi-hash', color: '#6b7280', label: r.entity_type };
+        var content = r.content || '';
+        if (content.length > 130) content = content.substring(0, 130) + '…';
+        var disc = r.meta && r.meta.discipline ? escapeHtml(r.meta.discipline) : '';
+        var topic = r.meta && r.meta.topic ? escapeHtml(r.meta.topic) : '';
+        var subline = '';
+        if (disc || topic) subline = disc + (topic ? ' / ' + topic : '');
+        if (r.meta && r.meta.work_id) subline = 'Работа ' + escapeHtml(r.meta.work_id) + ' · ' + escapeHtml(r.meta.lang) + ' · балл ' + r.meta.score;
+        if (r.meta && r.meta.avg !== undefined) subline = 'Ср ' + r.meta.avg + ' / Мин ' + r.meta.min + ' / Макс ' + r.meta.max + ' · ' + r.meta.n_items + ' ответов';
+
+        var badges = '';
+        if (r.meta && r.meta.avg_score != null) {
+          badges += '<span style="padding:2px 7px;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:11px">ср: ' + r.meta.avg_score + ' · ' + (r.meta.attempts || 0) + ' попыток</span>';
+        }
+        if (r.meta && r.meta.validation_status) {
+          var ok = r.meta.validation_status === 'ok';
+          badges += '<span style="padding:2px 7px;border-radius:10px;background:' + (ok ? '#d1fae5' : '#fef3c7') + ';color:' + (ok ? '#065f46' : '#92400e') + ';font-size:11px">валидация: ' + r.meta.validation_status + '</span>';
+        }
+        if (r.meta && r.meta.alignment_level) {
+          var lvl = r.meta.alignment_level;
+          var bg = lvl === 'high' ? '#d1fae5' : (lvl === 'medium' ? '#fef3c7' : '#fee2e2');
+          var col = lvl === 'high' ? '#065f46' : (lvl === 'medium' ? '#92400e' : '#991b1b');
+          badges += '<span style="padding:2px 7px;border-radius:10px;background:' + bg + ';color:' + col + ';font-size:11px">сходство: ' + lvl + '</span>';
+        }
+
+        var chips = '';
+        if (r.meta && Array.isArray(r.meta.sections) && r.meta.sections.length) {
+          chips = '<div data-no-default="1" style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap"><span style="font-size:11px;color:#9ca3af;align-self:center">в:</span>';
+          r.meta.sections.forEach(function(sec) {
+            chips += '<button class="ai-chip" data-section="' + sec + '" data-htype="' + escapeHtml(r.entity_type) + '" data-hid="' + r.entity_id + '" style="padding:3px 9px;font-size:11px;border:1px solid #d1d5db;background:#fff;border-radius:6px;cursor:pointer;color:#374151">' + (sectionLabels[sec] || sec) + '</button>';
+          });
+          chips += '</div>';
+        }
+
+        var score = r.score != null ? '<span style="margin-left:auto;font-size:11px;padding:2px 6px;background:#f3e8ff;color:#7e22ce;border-radius:4px">' + (r.score * 100).toFixed(0) + '%</span>' : '';
+
+        html += '<div class="ai-search-row" data-section="' + defaultSection(r.entity_type) + '" data-htype="' + escapeHtml(r.entity_type) + '" data-hid="' + r.entity_id + '" style="padding:10px 14px;border-bottom:1px solid #f3f4f6;cursor:pointer">'
+          + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+          + '<i class="bi ' + ti.icon + '" style="color:' + ti.color + ';font-size:14px"></i>'
+          + '<span style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px">' + ti.label + ' #' + r.entity_id + '</span>'
+          + score
+          + '</div>'
+          + '<div style="font-size:13px;color:#1f2937;line-height:1.4">' + escapeHtml(content) + '</div>'
+          + (subline ? '<div style="font-size:11px;color:#9ca3af;margin-top:4px">' + subline + '</div>' : '')
+          + (badges ? '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + badges + '</div>' : '')
+          + chips
+          + '</div>';
+      });
+
+      box.innerHTML = html;
+
+      box.querySelectorAll('.ai-search-row').forEach(function(row) {
+        row.addEventListener('click', function(e) {
+          if (e.target.closest('[data-no-default]')) return;
+          navigateTo(row.dataset.section, row.dataset.htype, row.dataset.hid);
+        });
+        row.addEventListener('mouseenter', function() { row.style.background = '#f9fafb'; });
+        row.addEventListener('mouseleave', function() { row.style.background = '#fff'; });
+      });
+      box.querySelectorAll('.ai-chip').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          navigateTo(btn.dataset.section, btn.dataset.htype, btn.dataset.hid);
+        });
+        btn.addEventListener('mouseenter', function() { btn.style.background = '#3b82f6'; btn.style.color = '#fff'; btn.style.borderColor = '#3b82f6'; });
+        btn.addEventListener('mouseleave', function() { btn.style.background = '#fff'; btn.style.color = '#374151'; btn.style.borderColor = '#d1d5db'; });
+      });
+    }
+
+    var debounceTimer = null;
+    inp.addEventListener('input', function() {
+      var q = inp.value.trim();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      var isNumeric = /^\d+$/.test(q);
+      if (!q || (!isNumeric && q.length < 2)) {
+        box.style.display = 'none';
+        modeBadge.style.display = 'none';
+        return;
+      }
+      box.style.display = 'block';
+      box.innerHTML = '<div style="padding:14px;color:#9ca3af;font-size:13px">Загрузка…</div>';
+      debounceTimer = setTimeout(function() {
+        fetch('api/search.php?q=' + encodeURIComponent(q) + '&top_k=10&_=' + Date.now(), { cache: 'no-store' })
+          .then(function(r) { return r.json(); })
+          .then(renderResults)
+          .catch(function(e) {
+            box.innerHTML = '<div style="padding:14px;color:#ef4444;font-size:13px">Ошибка: ' + escapeHtml(e.message) + '</div>';
+          });
+      }, 280);
+    });
+
+    inp.addEventListener('focus', function() {
+      if (inp.value.trim() && box.children.length) box.style.display = 'block';
+    });
+
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.ai-search-wrapper')) box.style.display = 'none';
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        inp.focus();
+        inp.select();
+      }
+      if (e.key === 'Escape' && document.activeElement === inp) {
+        inp.blur();
+        box.style.display = 'none';
+      }
+    });
+  }
+})();
+</script>
+
+<script>
+var _aiSvcPollTimer  = null;
+var _aiSvcPollCount  = 0;
+var _aiSvcState      = null;
+
+function aiSvcSetUI(state) {
+  var dot    = document.getElementById('ai-svc-dot');
+  var lbl    = document.getElementById('ai-svc-label');
+  var btn    = document.getElementById('ai-svc-btn');
+  var stop   = document.getElementById('ai-svc-stop-btn');
+  var spin   = document.getElementById('ai-svc-spinner');
+  var reload = document.getElementById('ai-svc-reload-btn');
+  if (!dot) return;
+  _aiSvcState = state;
+  if (state === 'online') {
+    dot.style.background = '#10b981';
+    lbl.textContent      = 'AI сервис эмбеддингов работает';
+    lbl.style.color      = '#047857';
+    btn.style.display    = 'none';
+    spin.style.display   = 'none';
+    reload.style.display = '';
+    stop.style.display   = '';
+  } else if (state === 'model_loading') {
+    dot.style.background = '#f59e0b';
+    lbl.textContent      = 'Загрузка модели эмбеддингов... (может занять 30–60 сек)';
+    lbl.style.color      = '#92400e';
+    btn.style.display    = 'none';
+    spin.style.display   = '';
+    reload.style.display = 'none';
+    stop.style.display   = 'none';
+  } else if (state === 'process_starting') {
+    dot.style.background = '#f59e0b';
+    lbl.textContent      = 'Запуск процесса Python...';
+    lbl.style.color      = '#92400e';
+    btn.style.display    = 'none';
+    spin.style.display   = '';
+    reload.style.display = 'none';
+    stop.style.display   = 'none';
+  } else {
+    dot.style.background = '#ef4444';
+    lbl.textContent      = 'AI сервис не запущен — семантика и валидация недоступны';
+    lbl.style.color      = '#b91c1c';
+    btn.style.display    = '';
+    spin.style.display   = 'none';
+    reload.style.display = 'none';
+    stop.style.display   = 'none';
+  }
+}
+
+function aiSvcCheck(callback) {
+  fetch('api/embeddings_health.php', { cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) { callback(d); })
+    .catch(function()  { callback({ live: false, ready: false }); });
+}
+
+function aiSvcPoll() {
+  clearTimeout(_aiSvcPollTimer);
+  _aiSvcPollCount++;
+  if (_aiSvcPollCount > 72) {
+    aiSvcSetUI('offline');
+    return;
+  }
+  aiSvcCheck(function(d) {
+    if (d.ready) {
+      aiSvcSetUI('online');
+    } else if (d.live) {
+      aiSvcSetUI('model_loading');
+      _aiSvcPollTimer = setTimeout(aiSvcPoll, 2500);
+    } else {
+      aiSvcSetUI('process_starting');
+      _aiSvcPollTimer = setTimeout(aiSvcPoll, 2500);
+    }
+  });
+}
+
+function aiSvcStart() {
+  _aiSvcPollCount = 0;
+  aiSvcSetUI('process_starting');
+  fetch('api/start_embeddings.php', { method: 'POST', cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.status === 'error') {
+        aiSvcSetUI('offline');
+        alert('Ошибка запуска: ' + (d.message || 'неизвестная ошибка'));
+      } else {
+        aiSvcPoll();
+      }
+    })
+    .catch(function() { aiSvcSetUI('offline'); });
+}
+
+function aiSvcStop() {
+  aiSvcSetUI('process_starting');
+  fetch('api/stop_embeddings.php', { method: 'POST', cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function() { aiSvcSetUI('offline'); })
+    .catch(function() { aiSvcSetUI('offline'); });
+}
+
+function aiSvcReloadTables() {
+  ['validation', 'semantic'].forEach(function(key) {
+    var el   = document.getElementById('section-' + key);
+    var wrap = el ? el.querySelector('.ajax-table-wrap') : null;
+    if (!wrap || !window.aiAjaxLoadTable) return;
+    var params = new URLSearchParams(window.location.search);
+    params.set('section', key);
+    window.aiAjaxLoadTable(wrap, '?' + params.toString());
+  });
+
+  fetch('chart_data.php', { cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) return;
+      chartData = data;
+      if (typeof Chart !== 'undefined') {
+        Object.values(Chart.instances).forEach(function(c) { c.destroy(); });
+      }
+      initializeCharts();
+    })
+    .catch(function(e) { console.error('Chart refresh failed:', e); });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  aiSvcCheck(function(d) {
+    if (d.ready)      aiSvcSetUI('online');
+    else if (d.live)  { aiSvcSetUI('model_loading'); aiSvcPoll(); }
+    else              aiSvcSetUI('offline');
+  });
+});
+
+window.aiTableEnhance = (function () {
+  var BADGE_LABELS = {
+    success: 'Норма / OK',
+    warning: 'Легкий / Warning',
+    danger:  'Сложный / Ошибка'
+  };
+
+  function initSortIcons(root) {
+    root.querySelectorAll('.sort-icon').forEach(function (el) {
+      var txt = el.textContent.trim();
+      var cls = txt === '▲' ? 'bi-chevron-up'
+               : txt === '▼' ? 'bi-chevron-down'
+               : 'bi-chevron-expand';
+      el.innerHTML = '<i class="bi ' + cls + '" style="font-size:11px;vertical-align:middle;pointer-events:none;"></i>';
+    });
+  }
+
+  var activeFilters = {};
+
+  var FILTERABLE = {
+    'validation':  ['success', 'warning', 'danger'],
+    'quality':     ['success', 'warning', 'danger'],
+    'correlation': ['success', 'warning'],
+    'students':    ['success', 'warning', 'danger'],
+    'semantic':    ['success', 'warning', 'danger'],
+    'criteria':    ['success', 'warning', 'danger'],
+    'answers':     ['success', 'warning', 'danger']
+  };
+
+  function buildFilterBar(tableResp) {
+    var prev = tableResp.previousElementSibling;
+    if (prev && prev.classList.contains('ai-table-filter-bar')) prev.remove();
+
+    var wrap = tableResp.closest('.ajax-table-wrap');
+    var sectionKey = wrap ? wrap.dataset.sectionKey : null;
+    if (!sectionKey || !FILTERABLE[sectionKey]) return;
+
+    var types      = FILTERABLE[sectionKey];
+    var currentFilter = activeFilters[sectionKey] || 'all';
+
+    var bar = document.createElement('div');
+    bar.className = 'ai-table-filter-bar';
+
+    var lbl = document.createElement('span');
+    lbl.className = 'ai-filter-label';
+    lbl.innerHTML = '<i class="bi bi-funnel-fill"></i> Фильтр:';
+    bar.appendChild(lbl);
+
+    function pill(filter, html) {
+      var p = document.createElement('span');
+      p.className = 'ai-filter-pill' + (filter === currentFilter ? ' active' : '');
+      p.dataset.filter = filter;
+      p.innerHTML = html;
+      return p;
+    }
+    bar.appendChild(pill('all', 'Все'));
+    types.forEach(function (c) {
+      bar.appendChild(pill(c, '<i class="bi bi-circle-fill" style="font-size:6px;opacity:.8;"></i> ' + (BADGE_LABELS[c] || c)));
+    });
+
+    tableResp.parentNode.insertBefore(bar, tableResp);
+
+    bar.addEventListener('click', function (e) {
+      var p = e.target.closest('.ai-filter-pill');
+      if (!p) return;
+      var filter = p.dataset.filter;
+      if (!sectionKey || !wrap) return;
+
+      activeFilters[sectionKey] = filter;
+
+      var params = new URLSearchParams(window.location.search);
+      params.set('section', sectionKey);
+      params.set(sectionKey + '_page', '1');
+      if (filter !== 'all') {
+        params.set(sectionKey + '_filter', filter);
+      } else {
+        params.delete(sectionKey + '_filter');
+      }
+      if (window.aiAjaxLoadTable) {
+        window.aiAjaxLoadTable(wrap, '?' + params.toString());
+      }
+    });
+  }
+
+  function colorRows(root) {
+    root.querySelectorAll('tbody tr').forEach(function (row) {
+      if (row.classList.contains('ai-row-success') || row.classList.contains('ai-row-warning') || row.classList.contains('ai-row-danger')) return;
+      var badge = row.querySelector('.badge-soft');
+      if (!badge) return;
+      if (badge.classList.contains('success')) row.classList.add('ai-row-success');
+      else if (badge.classList.contains('warning')) row.classList.add('ai-row-warning');
+      else if (badge.classList.contains('danger'))  row.classList.add('ai-row-danger');
+    });
+  }
+
+  function initInWrap(wrap) {
+    initSortIcons(wrap);
+    colorRows(wrap);
+    var tr = wrap.querySelector('.table-responsive');
+    if (tr) buildFilterBar(tr);
+  }
+
+  function initAll() {
+    initSortIcons(document);
+    colorRows(document);
+    document.querySelectorAll('.table-responsive').forEach(buildFilterBar);
+  }
+
+  function setFilter(sectionKey, val) {
+    activeFilters[sectionKey] = val;
+  }
+
+  return { initAll: initAll, initInWrap: initInWrap, setFilter: setFilter };
+})();
+
+</script>
+
+<script>
+(function () {
+  var AJAX_ENDPOINT = 'api/table.php';
+
+  var AJAX_SECTIONS = ['validation','quality','correlation','students','semantic','criteria','answers'];
+
+  function getSectionEl(key) {
+    return document.getElementById('section-' + key);
+  }
+
+  function getTableWrap(sectionEl) {
+    return sectionEl.querySelector('.ajax-table-wrap');
+  }
+
+  function markSections() {
+    AJAX_SECTIONS.forEach(function (key) {
+      var el = getSectionEl(key);
+      if (!el) return;
+      var tableWrap = el.querySelector('.table-responsive');
+      if (!tableWrap) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'ajax-table-wrap';
+      wrap.dataset.sectionKey = key;
+      tableWrap.parentNode.insertBefore(wrap, tableWrap);
+      var node = tableWrap;
+      while (node) {
+        var next = node.nextSibling;
+        wrap.appendChild(node);
+        if (node.nodeType === 1 && node.tagName === 'P' && node.classList.contains('text-muted')) break;
+        node = next;
+      }
+    });
+  }
+
+  function showLoading(wrap) {
+    wrap.style.opacity = '0.45';
+    wrap.style.pointerEvents = 'none';
+    if (!wrap.querySelector('.ajax-spinner')) {
+      var sp = document.createElement('div');
+      sp.className = 'ajax-spinner';
+      sp.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> <span class="loading-text" style="color:var(--text-secondary);font-size:12px;margin-left:8px;">Загрузка...</span>';
+      sp.style.cssText = 'position:absolute;top:8px;right:12px;display:flex;align-items:center;';
+      wrap.style.position = 'relative';
+      wrap.appendChild(sp);
+    }
+  }
+
+  function hideLoading(wrap) {
+    wrap.style.opacity = '';
+    wrap.style.pointerEvents = '';
+    var sp = wrap.querySelector('.ajax-spinner');
+    if (sp) sp.remove();
+  }
+
+  function showError(wrap, message) {
+    wrap.style.opacity = '';
+    wrap.style.pointerEvents = '';
+    var sp = wrap.querySelector('.ajax-spinner');
+    if (sp) {
+      sp.innerHTML = '<i class="bi bi-exclamation-triangle text-danger"></i> <span style="color:#dc2626;font-size:12px;margin-left:4px;">' + message + '</span>';
+      setTimeout(function() { if (sp) sp.remove(); }, 5000);
+    }
+  }
+
+  function buildApiUrl(href) {
+    var params = new URLSearchParams(href.replace(/^\?/, ''));
+    params.set('ajax', '1');
+    return AJAX_ENDPOINT + '?' + params.toString();
+  }
+
+  function loadTable(wrap, href) {
+    showLoading(wrap);
+    var timeout = 60000;
+    var controller = new AbortController();
+    var t0 = Date.now();
+    var sectionKey = (new URLSearchParams(href.replace(/^\?/, ''))).get('section') || wrap.dataset.sectionKey || '?';
+    var timeoutId = setTimeout(function() {
+      controller.abort();
+      showError(wrap, 'Таймаут запроса (60 сек)');
+    }, timeout);
+
+    fetch(buildApiUrl(href), {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      signal: controller.signal
+    })
+      .then(function (r) {
+        clearTimeout(timeoutId);
+        return r.text();
+      })
+      .then(function (html) {
+        var totalMs = Date.now() - t0;
+        wrap.innerHTML = html;
+        hideLoading(wrap);
+        var newUrl = window.location.pathname + href;
+        history.replaceState(history.state, '', newUrl);
+        if (window.aiTableEnhance) window.aiTableEnhance.initInWrap(wrap);
+        var perfEl = wrap.querySelector('.perf-server-timing');
+        var serverMs = perfEl ? parseInt(perfEl.getAttribute('data-total-ms') || '0', 10) : 0;
+        var initMs = perfEl ? parseInt(perfEl.getAttribute('data-init-ms') || '0', 10) : 0;
+        var dataSizeKb = Math.round(html.length / 102.4) / 10;
+        if (window._perfLog) {
+          window._perfLog(sectionKey, totalMs, serverMs, initMs, dataSizeKb);
+        }
+      })
+      .catch(function (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          showError(wrap, 'Таймаут запроса');
+        } else {
+          showError(wrap, 'Ошибка загрузки');
+        }
+      });
+  }
+
+  window.aiAjaxLoadTable = loadTable;
+
+  document.addEventListener('DOMContentLoaded', function () {
+    markSections();
+    if (window.aiTableEnhance) window.aiTableEnhance.initAll();
+
+    document.addEventListener('click', function (e) {
+      var link = e.target.closest('a');
+      if (!link) return;
+      var href = link.getAttribute('href') || '';
+      if (!href.includes('section=')) return;
+
+      var wrap = link.closest('.ajax-table-wrap');
+      if (!wrap) return;
+
+      e.preventDefault();
+      var fp = new URLSearchParams(href.replace(/^\?/, ''));
+      var sk = fp.get('section');
+      if (sk && window.aiTableEnhance) {
+        var fv = fp.get(sk + '_filter') || 'all';
+        window.aiTableEnhance.setFilter(sk, fv);
+      }
+      loadTable(wrap, href);
+    });
+  });
+})();
+</script>
 
 <?php render_footer(); ?>

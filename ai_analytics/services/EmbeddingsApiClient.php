@@ -32,8 +32,8 @@ final class EmbeddingsApiClient
             $healthUrl = $this->apiBaseUrl . '/health';
             $curlHandle = curl_init($healthUrl);
             curl_setopt($curlHandle, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($curlHandle, CURLOPT_TIMEOUT, 5);
-            curl_setopt($curlHandle, CURLOPT_CONNECTTIMEOUT, 3);
+            curl_setopt($curlHandle, CURLOPT_TIMEOUT, 2);
+            curl_setopt($curlHandle, CURLOPT_CONNECTTIMEOUT, 1);
 
             $response = curl_exec($curlHandle);
             $httpStatusCode = curl_getinfo($curlHandle, CURLINFO_HTTP_CODE);

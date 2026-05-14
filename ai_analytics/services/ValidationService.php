@@ -94,49 +94,37 @@ final class ValidationService
         
         
         try {
-            $testStmt = $this->databaseConnection->prepare("SELECT COUNT(*) FROM hier_questions hq INNER JOIN ai_syllabus_topics s ON s.syllabus_topic_id = hq.syllabus_topic_id WHERE hq.question_id IN (SELECT DISTINCT question_id FROM raw_exam_results WHERE import_id = ?) AND hq.syllabus_topic_id IS NOT NULL");
-            $testStmt->execute([$importId]);
-            $testCount = $testStmt->fetchColumn();
-        } catch (Throwable $e) {
-            echo "<script>console.error('ValidationService: IMMEDIATE SQL TEST ERROR: " . $e->getMessage() . "');</script>";
-        }
-        
-        try {            
-            
-            if (!$bypassCache) {                $cachedResults = $this->getCachedValidationResults($importId);
+            if (!$bypassCache) {
+                $cachedResults = $this->getCachedValidationResults($importId);
                 if (!empty($cachedResults)) {
-                    $this->logger->info('Using cached validation results', ['import_id' => $importId, 'count' => count($cachedResults)]);
                     return $cachedResults;
                 }
-            } else {            }            
-            try {                
-                
-                $sqlQuery = "
-                    SELECT hq.question_id, hq.question_text, hq.syllabus_topic_id, hq.max_score,
-                           s.title AS syllabus_title, s.keywords AS syllabus_keywords, s.topic_code,
-                           AVG(r.received_score) as avg_score, COUNT(DISTINCT r.student_id) as attempts
-                    FROM hier_questions hq
-                    INNER JOIN ai_syllabus_topics s ON s.syllabus_topic_id = hq.syllabus_topic_id
-                    LEFT JOIN raw_exam_results r ON r.question_id = hq.question_id AND r.import_id = :import_id_join
-                    WHERE hq.question_id IN (
-                        SELECT DISTINCT question_id 
-                        FROM raw_exam_results 
-                        WHERE import_id = :import_id_where
-                    )
-                    AND hq.syllabus_topic_id IS NOT NULL
-                    GROUP BY hq.question_id, s.syllabus_topic_id
-                    ORDER BY hq.question_id
-                ";            } catch (Throwable $e) {
-                echo "<script>console.error('ValidationService: SQL BUILD ERROR: " . $e->getMessage() . "');</script>";
-                return [];
             }
-            $queryStatement = $this->databaseConnection->prepare($sqlQuery);            
+
+            $sqlQuery = "
+                SELECT hq.question_id, hq.question_text, hq.syllabus_topic_id, hq.max_score,
+                       s.title AS syllabus_title, s.keywords AS syllabus_keywords, s.topic_code,
+                       AVG(r.received_score) as avg_score, COUNT(DISTINCT r.student_id) as attempts
+                FROM hier_questions hq
+                INNER JOIN ai_syllabus_topics s ON s.syllabus_topic_id = hq.syllabus_topic_id
+                LEFT JOIN raw_exam_results r ON r.question_id = hq.question_id AND r.import_id = :import_id_join
+                WHERE hq.question_id IN (
+                    SELECT DISTINCT question_id
+                    FROM raw_exam_results
+                    WHERE import_id = :import_id_where
+                )
+                AND hq.syllabus_topic_id IS NOT NULL
+                GROUP BY hq.question_id, s.syllabus_topic_id
+                ORDER BY hq.question_id
+            ";
+            $queryStatement = $this->databaseConnection->prepare($sqlQuery);
             try {
                 $queryStatement->execute([
                     ':import_id_join' => $importId,
                     ':import_id_where' => $importId
-                ]);            } catch (Throwable $e) {
-                echo "<script>console.error('ValidationService: SQL EXECUTE ERROR: " . $e->getMessage() . "');</script>";
+                ]);
+            } catch (Throwable $e) {
+                error_log('ValidationService SQL error: ' . $e->getMessage());
                 return [];
             }
 

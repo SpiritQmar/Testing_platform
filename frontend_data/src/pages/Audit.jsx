@@ -143,7 +143,7 @@ const Audit = ({ language = 'en' }) => {
             <Search size={20} />
             <input
               type="text"
-              placeholder="Search by user, action, or details..."
+              placeholder={t('searchAudit', language)}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -153,16 +153,16 @@ const Audit = ({ language = 'en' }) => {
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
           >
-            <option value="all">All Types</option>
-            <option value="Login">Login</option>
-            <option value="Create">Create</option>
-            <option value="Update">Update</option>
-            <option value="Delete">Delete</option>
-            <option value="Export">Export</option>
+            <option value="all">{t('filterAllTypes', language)}</option>
+            <option value="Login">{t('actionLogin', language)}</option>
+            <option value="Create">{t('actionCreate', language)}</option>
+            <option value="Update">{t('actionUpdate', language)}</option>
+            <option value="Delete">{t('actionDelete', language)}</option>
+            <option value="Export">{t('actionExport', language)}</option>
           </select>
           <button className="btn-primary">
             <Download size={18} />
-            Export Logs
+            {t('exportLogs', language)}
           </button>
         </div>
 
@@ -170,11 +170,11 @@ const Audit = ({ language = 'en' }) => {
           <table className="audit-table">
             <thead>
               <tr>
-                <th>Timestamp</th>
-                <th>User</th>
-                <th>Action</th>
-                <th>Details</th>
-                <th>IP Address</th>
+                <th>{t('colTimestamp', language)}</th>
+                <th>{t('colUser', language)}</th>
+                <th>{t('colAction', language)}</th>
+                <th>{t('colDetails', language)}</th>
+                <th>{t('colIpAddress', language)}</th>
               </tr>
             </thead>
             <tbody>
@@ -186,13 +186,13 @@ const Audit = ({ language = 'en' }) => {
                   transition={{ delay: index * 0.03 }}
                 >
                   <td className="timestamp">
-                    {new Date(log.created_at).toLocaleString('ru-RU')}
+                    {new Date(log.created_at).toLocaleString(language === 'en' ? 'en-US' : language === 'kz' ? 'kk-KZ' : 'ru-RU')}
                   </td>
                   <td>
                     <div className="user-cell">
                       <div className="user-avatar">{log.full_name?.charAt(0) || '?'}</div>
                       <div>
-                        <div className="user-name">{log.full_name || 'Unknown'}</div>
+                        <div className="user-name">{log.full_name || t('unknownUser', language)}</div>
                         <div className="user-id">ID: {log.user_id}</div>
                       </div>
                     </div>
@@ -200,7 +200,7 @@ const Audit = ({ language = 'en' }) => {
                   <td>
                     <span className={`action-badge ${getActionClass(log.action_type)}`}>
                       {getActionIcon(log.action_type)}
-                      {log.action_type}
+                      {t('action' + log.action_type, language) || log.action_type}
                     </span>
                   </td>
                   <td className="details">{log.action_details}</td>

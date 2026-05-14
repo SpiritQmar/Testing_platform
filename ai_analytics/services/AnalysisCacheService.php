@@ -46,7 +46,7 @@ final class AnalysisCacheService
             $stmt->execute([':import_id' => $importId]);
             $totalCount = (int)$stmt->fetchColumn();
 
-            return $cachedCount > 0 && $cachedCount === $totalCount;
+            return $cachedCount === $totalCount;
         } catch (Throwable $exception) {
             $this->logger->error('Failed to check cache validity', [
                 'import_id' => $importId,
@@ -106,10 +106,10 @@ final class AnalysisCacheService
         }
     }
 
-    public function buildSemanticCache(int $importId): bool
+    public function buildSemanticCache(int $importId, bool $bypassStatGate = false): bool
     {
         try {
-            $this->logger->info('Building semantic cache', ['import_id' => $importId]);
+            $this->logger->info('Building semantic cache', ['import_id' => $importId, 'bypass_stat_gate' => $bypassStatGate]);
 
             $this->databaseConnection->prepare("DELETE FROM question_semantic_cache WHERE import_id = :import_id")
                 ->execute([':import_id' => $importId]);
@@ -119,6 +119,25 @@ final class AnalysisCacheService
             if (empty($semanticResults)) {
                 $this->logger->warning('No semantic results to cache', ['import_id' => $importId]);
                 return true;
+            }
+
+            if (!$bypassStatGate) {
+                $flagged = $this->getStatFlaggedQuestionIds($importId);
+                if (!empty($flagged)) {
+                    $semanticResults = array_values(array_filter(
+                        $semanticResults,
+                        fn($r) => isset($flagged[(int)$r['question_id']])
+                    ));
+                    $this->logger->info('Semantic cache gated by stat analysis', [
+                        'import_id' => $importId,
+                        'flagged_count' => count($flagged),
+                        'cache_count' => count($semanticResults),
+                    ]);
+                }
+                if (empty($semanticResults)) {
+                    $this->logger->info('Stat gate filtered all questions — no semantic cache needed', ['import_id' => $importId]);
+                    return true;
+                }
             }
 
             $stmt = $this->databaseConnection->prepare("
@@ -209,6 +228,39 @@ final class AnalysisCacheService
             ]);
             return [];
         }
+    }
+
+    private function getStatFlaggedQuestionIds(int $importId): array
+    {
+        $cfg = require __DIR__ . '/../config.php';
+        $easyT = (float)($cfg['coefficients']['quality']['easy_threshold'] ?? 0.8);
+        $hardT = (float)($cfg['coefficients']['quality']['hard_threshold'] ?? 0.3);
+
+        $stmt = $this->databaseConnection->prepare(
+            "SELECT r.question_id,
+                    AVG(r.received_score) AS mean_s,
+                    COALESCE(MAX(hq.max_score), 100) AS max_s,
+                    COUNT(DISTINCT r.student_id) AS attempts
+             FROM raw_exam_results r
+             LEFT JOIN hier_questions hq ON hq.question_id = r.question_id
+             WHERE r.import_id = :imp AND r.received_score IS NOT NULL
+             GROUP BY r.question_id"
+        );
+        $stmt->execute([':imp' => $importId]);
+
+        $flagged = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $qid = (int)$row['question_id'];
+            $max = (float)$row['max_s'];
+            $mean = (float)$row['mean_s'];
+            $att  = (int)$row['attempts'];
+            $ratio = $max > 0 ? $mean / $max : 0.0;
+
+            if ($ratio >= $easyT || $ratio <= $hardT || $att < 5) {
+                $flagged[$qid] = true;
+            }
+        }
+        return $flagged;
     }
 
     public function invalidateCache(int $importId): bool

@@ -1,6 +1,5 @@
 import logging
 from contextlib import asynccontextmanager
-from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query
 
@@ -119,7 +118,7 @@ def get_similarity(request: SimilarityRequest):
 @app.post("/deduplicate", response_model=DeduplicateResponse)
 def deduplicate(
     request: DeduplicateRequest,
-    threshold: Annotated[float | None, Query(ge=0.0, le=1.0)] = None,
+    threshold: float = Query(default=None, ge=0.0, le=1.0),
 ):
     try:
         current_threshold = request.threshold if threshold is None else threshold

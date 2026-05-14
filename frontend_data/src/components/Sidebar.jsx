@@ -1,11 +1,17 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutDashboard, FileQuestion, Upload, Settings, Users, Activity, User, LogOut, ChevronUp } from 'lucide-react'
+import { LayoutDashboard, FileQuestion, Upload, Settings, Users, Activity, User, LogOut, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react'
 import { t } from '../utils/translations'
 import './Sidebar.css'
 
-const Sidebar = ({ currentPage, setCurrentPage, user, language = 'en' }) => {
+const Sidebar = ({ currentPage, setCurrentPage, user, language = 'en', isMinimal = false, setIsMinimal }) => {
   const [showUserMenu, setShowUserMenu] = useState(false)
+
+  const handleToggleMinimal = () => {
+    const next = !isMinimal
+    if (setIsMinimal) setIsMinimal(next)
+    localStorage.setItem('sidebarMinimal', next)
+  }
 
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: t('overview', language) },
@@ -23,7 +29,7 @@ const Sidebar = ({ currentPage, setCurrentPage, user, language = 'en' }) => {
 
   return (
     <motion.aside
-      className="sidebar"
+      className={`sidebar${isMinimal ? ' minimal' : ''}`}
       initial={{ x: -264 }}
       animate={{ x: 0 }}
       transition={{ duration: 0.5 }}
@@ -36,10 +42,15 @@ const Sidebar = ({ currentPage, setCurrentPage, user, language = 'en' }) => {
         >
           U
         </motion.div>
-        <div>
-          <div className="brand-name">UAMS</div>
-          <div className="brand-subtitle">Question Analysis</div>
-        </div>
+        {!isMinimal && (
+          <div>
+            <div className="brand-name">UAMS</div>
+            <div className="brand-subtitle">Question Analysis</div>
+          </div>
+        )}
+        <button className="sidebar-toggle-btn" onClick={handleToggleMinimal} title={isMinimal ? 'Expand sidebar' : 'Collapse sidebar'}>
+          {isMinimal ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
       </div>
 
       <nav className="sidebar-nav">
